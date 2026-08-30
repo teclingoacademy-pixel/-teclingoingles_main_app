@@ -4,6 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { registrarMensaje, registrarChat, obtenerMensajes, obtenerChats } from '../services/identityService';
 
 type Theme = 'dark' | 'light' | 'normal';
 type Language = 'es' | 'en';
@@ -522,6 +523,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('lang', language);
   }, [language]);
 
+  // Cargar chats del DataLake cuando el usuario inicia sesión
+  useEffect(() => {
+    if (!userEmail) return;
+    let cancelled = false;
+    obtenerChats(userEmail).then(remoteChats => {
+      if (cancelled || !remoteChats || remoteChats.length === 0) return;
+      setChats(prev => {
+        const merged = [...prev];
+        remoteChats.forEach((rc: any) => {
+          const exists = merged.find(c => c.id === rc.id);
+          if (!exists) {
+            merged.push({
+              id: rc.id,
+              name: rc.name,
+              type: rc.type,
+              participants: rc.participants || [],
+              messages: [],
+              lastMessage: rc.last_message || '',
+              unreadCount: 0
+            });
+          }
+        });
+        return merged;
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [userEmail]);
+
   const t = (key: string) => {
     return translations[language][key as keyof typeof translations['en']] || key;
   };
@@ -557,6 +586,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addMessage = (chatId: string, message: Message) => {
+    // Actualizar estado local inmediatamente (optimistic update)
     setChats(prev => prev.map(chat => {
       if (chat.id === chatId) {
         return {
@@ -568,6 +598,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return chat;
     }));
+
+    // Persistir al DataLake (fire-and-forget)
+    if (userEmail) {
+      registrarMensaje(
+        userEmail, chatId, message.content,
+        message.senderName, message.senderRole, message.isDirector
+      ).catch(() => {});
+    }
   };
 
   const createGroupChat = (groupId: string, name: string, participants: string[]) => {
@@ -580,6 +618,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       unreadCount: 0
     };
     setChats(prev => [...prev, newChat]);
+
+    // Persistir chat al DataLake
+    if (userEmail) {
+      registrarChat(userEmail, groupId, name, 'GROUP', participants).catch(() => {});
+    }
   };
 
   return (

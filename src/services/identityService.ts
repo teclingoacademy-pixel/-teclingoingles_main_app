@@ -441,6 +441,63 @@ export async function uploadAvatar(
   }
 }
 
+// ============================================================
+// MENSAJERÍA
+// ============================================================
+
+export async function registrarChat(
+  email: string, chatId: string, name: string, type: string,
+  participants: string[], lastMessage?: string
+): Promise<IdentidadResultado & { chat_id?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'registrarChat', email: email.toLowerCase().trim(),
+      chat_id: chatId, name, type, participants, last_message: lastMessage || ''
+    });
+    if (res?.ok) return { ok: true, chat_id: (res as any).chat_id };
+    return { ok: false, code: res?.code, error: res?.error };
+  } catch { return { ok: false, error: 'lake_unreachable' }; }
+}
+
+export async function registrarMensaje(
+  email: string, chatId: string, content: string,
+  senderName: string, senderRole: string, isDirector?: boolean
+): Promise<IdentidadResultado & { msg_id?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'registrarMensaje', email: email.toLowerCase().trim(),
+      chat_id: chatId, content, sender_name: senderName,
+      sender_role: senderRole, is_director: isDirector || false
+    });
+    if (res?.ok) return { ok: true, msg_id: (res as any).msg_id };
+    return { ok: false, code: res?.code, error: res?.error };
+  } catch { return { ok: false, error: 'lake_unreachable' }; }
+}
+
+export async function obtenerMensajes(
+  chatId: string, limit?: number
+): Promise<any[]> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerMensajes', chat_id: chatId, limit: limit || 100
+    });
+    if (res?.ok && (res as any).mensajes) return (res as any).mensajes;
+    return [];
+  } catch { return []; }
+}
+
+export async function obtenerChats(
+  email: string
+): Promise<any[]> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerChats', email: email.toLowerCase().trim()
+    });
+    if (res?.ok && (res as any).chats) return (res as any).chats;
+    return [];
+  } catch { return []; }
+}
+
 const identityService = {
   verificarEmail,
   consultarIdentidadEnLake,
@@ -462,5 +519,9 @@ const identityService = {
   guardarPerfil,
   obtenerPerfilCompleto,
   uploadAvatar,
+  registrarChat,
+  registrarMensaje,
+  obtenerMensajes,
+  obtenerChats,
 };
 export default identityService;
