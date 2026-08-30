@@ -10,7 +10,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycbyG3uHJF_4c_-HNFosQ8qTmz9AX_YdAaC44gA4QFGNT_tvGg4jj4RymD0wFpQbRW2qx/exec';
+  'https://script.google.com/macros/s/AKfycbzJA5dkIj9IBlUbYewD-pIwA-RwScgAkk9DGBRI79R1n--FIZib_He6gKPum37X-WHK/exec';
 
 const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
@@ -498,6 +498,156 @@ export async function obtenerChats(
   } catch { return []; }
 }
 
+// ============================================================
+// COMUNIDAD TECNOLINGO — LISTADO DE USUARIOS
+// ============================================================
+
+export interface UsuarioComunidad {
+  id: string;
+  email: string;
+  nombre: string;
+  rol: 'ALUMNO' | 'DOCENTE' | 'DIRECTOR';
+  avatar: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  phone: string;
+  curp: string;
+  controlNumber: string;
+  location: string;
+  nivel: string;
+  joinDate: string;
+  hoja: string;
+}
+
+/**
+ * Lista usuarios del Data Lake para la vista Comunidad Tecnolingo.
+ * Une USUARIOS + ALUMNOS/DOCENTES/DIRECTORES por user_id.
+ * Filtros: TODOS / DOCENTE / ALUMNO / DIRECTOR
+ * Búsqueda: case-insensitive en nombre o email
+ */
+export async function listarUsuarios(
+  filtro: 'TODOS' | 'DOCENTE' | 'ALUMNO' | 'DIRECTOR' = 'TODOS',
+  buscar: string = ''
+): Promise<UsuarioComunidad[]> {
+  try {
+    const res = await postAlLake({
+      action: 'listarUsuarios',
+      filtro,
+      buscar
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).usuarios)) {
+      return (res as any).usuarios as UsuarioComunidad[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+// ============================================================
+// GRUPOS ACADÉMICOS
+// ============================================================
+
+export interface GrupoAcademico {
+  grupo_id: string;
+  director_email: string;
+  institution_code: string;
+  carrera: string;
+  grado: string;
+  seccion: string;
+  turno: string;
+  modalidad: string;
+  materias: any[];
+  horario: Record<string, string>;
+  dias: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listarGrupos(email: string): Promise<GrupoAcademico[]> {
+  try {
+    const res = await postAlLake({
+      action: 'listarGrupos',
+      email: email.toLowerCase().trim()
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).grupos)) {
+      return (res as any).grupos as GrupoAcademico[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function crearGrupo(
+  email: string,
+  grupo: {
+    carrera: string;
+    grado: string;
+    seccion: string;
+    turno: string;
+    modalidad?: string;
+    materias?: any[];
+    horario?: Record<string, string>;
+    dias?: string;
+  }
+): Promise<IdentidadResultado & { grupo_id?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'crearGrupo',
+      email: email.toLowerCase().trim(),
+      ...grupo,
+      modalidad: grupo.modalidad || 'PRESENCIAL',
+      dias: grupo.dias || 'LUN,MAR,MIÉ,JUE,VIE'
+    }, 15000);
+    if (res?.ok) {
+      return { ok: true, grupo_id: (res as any).grupo_id };
+    }
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function eliminarGrupo(email: string, grupoId: string): Promise<IdentidadResultado> {
+  try {
+    const res = await postAlLake({
+      action: 'eliminarGrupo',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId
+    }, 15000);
+    if (res?.ok) return { ok: true };
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function obtenerConfigAcademica(
+  args: { email: string; director_email?: string }
+): Promise<{ ok: boolean; institution_type?: string; carreras?: string[]; turnos?: string[]; modalidad?: string; defaults?: boolean; error?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerConfigAcademica',
+      email: args.email.toLowerCase().trim(),
+      director_email: args.director_email?.toLowerCase().trim() || args.email.toLowerCase().trim()
+    }, 15000);
+    if (res?.ok) {
+      return {
+        ok: true,
+        institution_type: (res as any).institution_type,
+        carreras: (res as any).carreras || [],
+        turnos: (res as any).turnos || [],
+        modalidad: (res as any).modalidad,
+        defaults: (res as any).defaults
+      };
+    }
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
 const identityService = {
   verificarEmail,
   consultarIdentidadEnLake,
@@ -523,5 +673,10 @@ const identityService = {
   registrarMensaje,
   obtenerMensajes,
   obtenerChats,
+  listarUsuarios,
+  listarGrupos,
+  crearGrupo,
+  eliminarGrupo,
+  obtenerConfigAcademica,
 };
 export default identityService;

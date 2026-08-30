@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -42,6 +42,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
 import { GlassCard } from './GlassCard';
+import { listarUsuarios, UsuarioComunidad } from '../services/identityService';
 import { 
   Radar, 
   RadarChart, 
@@ -50,7 +51,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 
-type UserRole = 'ADMIN' | 'DOCENTE' | 'ALUMNO' | 'TUTOR';
+type UserRole = 'ADMIN' | 'DOCENTE' | 'ALUMNO' | 'TUTOR' | 'DIRECTOR';
 
 export interface ADNResults {
   speaking: number;
@@ -806,12 +807,62 @@ export function UsersMaster() {
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [modalMode, setModalMode] = useState<'VIEW' | 'EDIT'>('VIEW');
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+
+  // Cargar usuarios del Data Lake según filtro
+  const cargarUsuarios = async (
+    filtro: UserRole | 'ALL' = filter,
+    buscar: string = search
+  ) => {
+    setLoadingUsers(true);
+    setUsersError(null);
+    try {
+      const filtroBackend =
+        filtro === 'ALL' ? 'TODOS' :
+        (filtro === 'DOCENTE' || filtro === 'ALUMNO' || filtro === 'DIRECTOR') ? filtro : 'TODOS';
+
+      const data = await listarUsuarios(filtroBackend as any, buscar);
+
+      // Mapear UsuarioComunidad → User (para mantener compatibilidad con UserHierarchyModal)
+      const mapped: User[] = data.map((u) => ({
+        id: u.id,
+        controlNumber: u.controlNumber,
+        curp: u.curp,
+        name: u.nombre,
+        email: u.email,
+        phone: u.phone,
+        location: u.location,
+        role: u.rol as UserRole,
+        status: u.status,
+        joinDate: u.joinDate,
+        level: u.nivel,
+        photo: u.avatar || undefined,
+      }));
+
+      setUsers(mapped);
+    } catch (err) {
+      console.error('[UsersMaster] Error listando usuarios:', err);
+      setUsersError('No se pudo cargar el listado del Data Lake');
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Cargar al montar y cuando cambian filtro/búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      cargarUsuarios(filter, search);
+    }, 300); // debounce 300ms
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, search]);
 
   const filteredUsers = users.filter(user => {
     const matchesRole = filter === 'ALL' || user.role === filter;
-    const matchesSearch = user.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch = user.name.toLowerCase().includes(search.toLowerCase()) ||
                           user.email.toLowerCase().includes(search.toLowerCase()) ||
-                          user.controlNumber.toLowerCase().includes(search.toLowerCase());
+                          (user.controlNumber || '').toLowerCase().includes(search.toLowerCase());
     return matchesRole && matchesSearch;
   });
 
@@ -866,18 +917,22 @@ export function UsersMaster() {
 
       <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
         {[
-          { label: 'Todos', value: 'ALL', icon: Users },
-          { label: 'Administrativos', value: 'ADMIN', icon: ShieldCheck },
-          { label: 'Docentes', value: 'DOCENTE', icon: GraduationCap },
-          { label: 'Alumnos', value: 'ALUMNO', icon: UserPlus },
-          { label: 'Tutores', value: 'TUTOR', icon: UserPlus },
+          { label: 'Todos', value: 'ALL', icon: Users, disabled: false },
+          { label: 'Administrativos', value: 'ADMIN', icon: ShieldCheck, disabled: true },
+          { label: 'Docentes', value: 'DOCENTE', icon: GraduationCap, disabled: false },
+          { label: 'Alumnos', value: 'ALUMNO', icon: UserPlus, disabled: false },
+          { label: 'Tutores', value: 'TUTOR', icon: UserPlus, disabled: true },
         ].map((btn) => (
           <button
             key={btn.value}
-            onClick={() => setFilter(btn.value as any)}
+            onClick={() => !btn.disabled && setFilter(btn.value as any)}
+            disabled={btn.disabled}
+            title={btn.disabled ? 'No disponible en este modelo' : undefined}
             className={`flex-shrink-0 flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all border ${
-              filter === btn.value 
-                ? 'bg-[#DEFF9A]/10 border-[#DEFF9A]/30 text-[#DEFF9A] shadow-[0_0_15px_#DEFF9A15]' 
+              btn.disabled
+                ? 'bg-white/[0.02] border-white/5 text-white/15 cursor-not-allowed opacity-40'
+                : filter === btn.value
+                ? 'bg-[#DEFF9A]/10 border-[#DEFF9A]/30 text-[#DEFF9A] shadow-[0_0_15px_#DEFF9A15]'
                 : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:border-white/20'
             }`}
           >
@@ -901,7 +956,31 @@ export function UsersMaster() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filteredUsers.map((user) => (
+              {loadingUsers && (
+                <tr>
+                  <td colSpan={6} className="px-8 py-12 text-center">
+                    <div className="flex items-center justify-center gap-3 text-[#DEFF9A]">
+                      <div className="w-4 h-4 border-2 border-[#DEFF9A] border-t-transparent rounded-full animate-spin" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Cargando del Data Lake...</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {!loadingUsers && usersError && (
+                <tr>
+                  <td colSpan={6} className="px-8 py-12 text-center">
+                    <div className="text-red-400 text-xs font-bold uppercase tracking-widest">{usersError}</div>
+                  </td>
+                </tr>
+              )}
+              {!loadingUsers && !usersError && filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-8 py-12 text-center">
+                    <div className="text-white/30 text-[10px] font-bold uppercase tracking-widest">Sin resultados para este filtro</div>
+                  </td>
+                </tr>
+              )}
+              {!loadingUsers && !usersError && filteredUsers.map((user) => (
                 <tr 
                   key={user.id} 
                   onClick={() => handleOpenUser(user)}

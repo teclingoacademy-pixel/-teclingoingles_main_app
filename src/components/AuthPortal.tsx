@@ -133,6 +133,13 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
           return;
         }
 
+        // Si es ALUMNO o DOCENTE, requerir código institucional
+        if (selectedRole !== 'DIRECTOR' && !institutionCode.trim()) {
+          setError('⚠️ El Código Institucional es obligatorio. Solicítalo al director de tu institución.');
+          setIsAuthenticating(false);
+          return;
+        }
+
         if (pendingGoogleToken) {
           setStatusMessage('Completando tu registro con Google...');
           const resultado = await finalizarRegistroGoogle(emailLimpio, selectedRole, institutionCode);
@@ -141,6 +148,14 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
             const nombreFinal = pendingGoogleName || (resultado.perfil.nombre as string) || emailLimpio.split('@')[0];
             localStorage.setItem('teclingo_user_email', emailLimpio);
             localStorage.setItem('teclingo_user_name', nombreFinal);
+
+            // Si es DIRECTOR y se generó institution_code, guardarlo
+            const generatedCode = resultado.perfil.institution_code as string | undefined;
+            if (generatedCode) {
+              localStorage.setItem('teclingo_institution_code', generatedCode);
+              console.log('[AuthPortal] Código Institucional generado:', generatedCode);
+            }
+
             logActividadGlobal(emailLimpio, 'auth', 'registro_google', `Registro Google completado — rol ${role}`);
             sendWelcomeEmail(emailLimpio, nombreFinal, 'google');
             setPendingGoogleToken(null);
@@ -167,11 +182,19 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
           const role = roleFromProfile(resultado.perfil);
           localStorage.setItem('teclingo_user_email', emailLimpio);
           localStorage.setItem('teclingo_user_name', emailLimpio.split('@')[0]);
+
+          // Si es DIRECTOR y se generó institution_code, guardarlo y mostrarlo
+          const generatedCode = resultado.perfil.institution_code as string | undefined;
+          if (generatedCode) {
+            localStorage.setItem('teclingo_institution_code', generatedCode);
+            console.log('[AuthPortal] Código Institucional generado:', generatedCode);
+          }
+
           logActividadGlobal(emailLimpio, 'auth', 'registro_email', 'Registro por email exitoso');
           sendWelcomeEmail(emailLimpio, emailLimpio.split('@')[0], 'email');
           onLogin(role);
         } else {
-          setError('No se pudo crear la cuenta. Intenta de nuevo.');
+          setError(resultado.error || 'No se pudo crear la cuenta. Intenta de nuevo.');
           setIsAuthenticating(false);
         }
       } else {
@@ -356,22 +379,39 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
               </div>
             )}
 
-            {mode === 'register' && (
+            {mode === 'register' && selectedRole && selectedRole !== 'DIRECTOR' && (
               <div className="space-y-1">
                 <label className="text-white/40 text-[8px] font-black uppercase tracking-widest ml-3">
-                  Código Institucional <span className="text-white/20">(opcional)</span>
+                  Código Institucional <span className="text-red-400/80">*</span>
                 </label>
                 <div className="relative">
                   <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-[#DEFF9A]/40" size={14} />
                   <input
                     type="text"
+                    required
                     value={institutionCode}
-                    onChange={(e) => setInstitutionCode(e.target.value)}
+                    onChange={(e) => setInstitutionCode(e.target.value.toUpperCase())}
                     placeholder="Ej: TECLINGO-PANUCO-2026"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-3 text-white text-[11px] font-medium focus:outline-none focus:border-[#DEFF9A]/50 focus:ring-1 focus:ring-[#DEFF9A]/20 transition-all placeholder:text-white/10"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-3 text-white text-[11px] font-medium focus:outline-none focus:border-[#DEFF9A]/50 focus:ring-1 focus:ring-[#DEFF9A]/20 transition-all placeholder:text-white/10 uppercase font-mono"
                   />
                 </div>
-                <p className="text-white/15 text-[7px] ml-3">Si no lo tienes, puedes dejarlo vacío y agregarlo después en tu perfil.</p>
+                <p className="text-amber-300/80 text-[8px] ml-3 font-bold leading-tight">
+                  ⚠️ Solicita este código al director de tu institución. Es obligatorio para vincularte a ella.
+                </p>
+              </div>
+            )}
+
+            {mode === 'register' && selectedRole === 'DIRECTOR' && (
+              <div className="space-y-1">
+                <div className="p-3 bg-[#DEFF9A]/5 border border-[#DEFF9A]/20 rounded-xl">
+                  <p className="text-[#DEFF9A] text-[9px] font-black uppercase tracking-widest leading-tight">
+                    💡 Eres Director
+                  </p>
+                  <p className="text-white/60 text-[8px] mt-1 leading-tight">
+                    Al registrarte, el sistema generará automáticamente tu Código Institucional único.
+                    Compártelo con tus alumnos y docentes para que puedan vincularse.
+                  </p>
+                </div>
               </div>
             )}
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Zap,
   ChevronLeft,
@@ -107,6 +107,29 @@ export function Sidebar({
 
   const toggleCollapse = () => setIsSidebarCollapsed(!isSidebarCollapsed);
   const closeMobile = () => setIsSidebarOpen(false);
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // Scroll al botón activo cuando cambia currentView
+  useEffect(() => {
+    if (!navRef.current) return;
+    const activeBtn = navRef.current.querySelector(`[data-view-id="${currentView}"]`) as HTMLElement | null;
+    if (activeBtn) {
+      // Pequeño delay para que el DOM termine de renderizar (sobre todo al expandir sub-items)
+      setTimeout(() => {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
+  }, [currentView, isSidebarCollapsed]);
+
+  const handlePrincipalClick = useCallback((id: string) => {
+    onViewChange(id);
+    // Expandir/collapse la categoría correspondiente
+    const item = items.find(i => i.id === id);
+    if (item?.category) {
+      setExpandedCats(prev => ({ ...prev, [item.category!]: !prev[item.category!] }));
+    }
+    if (window.innerWidth < 1024) closeMobile();
+  }, [onViewChange, items]);
 
   const sidebarWidth = isSidebarCollapsed ? 'w-24' : 'w-72';
 
@@ -186,7 +209,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className={`flex-1 space-y-2 overflow-y-auto overflow-x-hidden touch-pan-y pb-12 custom-scrollbar px-6 ${isSidebarCollapsed ? 'px-2' : 'px-6'}`}>
+        <nav ref={navRef} className={`flex-1 space-y-2 overflow-y-auto overflow-x-hidden touch-pan-y pb-12 custom-scrollbar px-6 ${isSidebarCollapsed ? 'px-2' : 'px-6'}`}>
           {items.some(item => !!item.category) ? (
             <div className="space-y-4">
               {([
@@ -212,12 +235,11 @@ export function Sidebar({
 
                     {/* Principal Button */}
                     <button
+                      data-view-id={principalItem.id}
                       disabled={principalItem.disabled}
                       onClick={() => {
                         if (principalItem.disabled) return;
-                        onViewChange(principalItem.id);
-                        setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
-                        if (window.innerWidth < 1024) closeMobile();
+                        handlePrincipalClick(principalItem.id);
                       }}
                       className={`w-full flex items-center p-4 rounded-2xl transition-all group relative ${
                         principalItem.disabled
@@ -282,6 +304,7 @@ export function Sidebar({
                             return (
                               <button
                                 key={subItem.id}
+                                data-view-id={subItem.id}
                                 disabled={subItem.disabled}
                                 onClick={() => {
                                   if (subItem.disabled) return;
@@ -333,6 +356,7 @@ export function Sidebar({
               return (
                 <button
                   key={item.id}
+                  data-view-id={item.id}
                   disabled={item.disabled}
                   onClick={() => {
                     if (item.disabled) return;

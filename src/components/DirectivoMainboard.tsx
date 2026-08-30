@@ -163,7 +163,10 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
   ];
 
   const filteredSidebarItems = sidebarItems.filter(item => {
+    // Siempre mostrar estos botones críticos
     if (item.id === 'settings' || item.id === 'dashboard' || item.id === 'control-accesos' || item.id === 'real-time') return true;
+    // Siempre mostrar Grados y Grupos (DEMANDA) — se valida al hacer click
+    if (item.id === 'groups') return true;
     return !isViewDisabled(item.id);
   });
 
@@ -182,7 +185,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
 
       {/* Main Content */}
       <main className={`flex-1 flex flex-col h-screen ${isSidebarOpen ? 'overflow-hidden' : 'overflow-y-auto'} custom-scrollbar pt-20 lg:pt-0 transition-all duration-300`}>
-        <div className="p-6 md:p-8 lg:p-12 max-w-[1600px] mx-auto w-full space-y-8 md:space-y-12 pb-32">
+        <div className="p-3 sm:p-6 md:p-8 lg:p-12 max-w-[1600px] mx-auto w-full space-y-4 sm:space-y-8 md:space-y-12 pb-32">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}

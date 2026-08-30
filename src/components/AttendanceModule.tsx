@@ -174,8 +174,31 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
           <QRScannerModule 
             onClose={() => setShowScanner(false)} 
             onScanSuccess={(data) => {
-              // Extract ID from QR (assuming format ROD-PANC-26-0X)
-              const id = data.split('-').pop()?.replace(/^0+/, '');
+              // Extraer ID del QR (acepta múltiples formatos)
+              // Formato principal: "TECLINGO:usr_1788125347237_196" (producido por UserSettings.tsx)
+              // Formatos legacy: "ROD-PANC-26-01", "usr_xxx_yyy", email
+              let id: string | undefined;
+              const trimmed = String(data || '').trim();
+
+              if (trimmed.startsWith('TECLINGO:')) {
+                // Formato nuevo: TECLINGO:<userId>
+                id = trimmed.substring('TECLINGO:'.length);
+              } else if (trimmed.includes('@')) {
+                // Email — buscar por email
+                id = trimmed;
+              } else if (trimmed.startsWith('usr_')) {
+                // Formato userId directo
+                id = trimmed;
+              } else if (trimmed.includes('-')) {
+                // Formato legacy: ROD-PANC-26-01 → tomar última parte
+                id = trimmed.split('-').pop()?.replace(/^0+/, '') || trimmed;
+              } else {
+                // Cualquier otro valor, usarlo directo
+                id = trimmed;
+              }
+
+              console.log('[AttendanceModule] QR scanned:', { raw: data, extractedId: id });
+
               if (id) updateStatus(id, 'PRESENT');
             }} 
           />
