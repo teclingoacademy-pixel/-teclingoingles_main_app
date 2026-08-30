@@ -250,7 +250,7 @@ export async function guardarPerfil(
       email: args.email.toLowerCase().trim(),
       rol: args.rol,
       campos: args.campos,
-    }, 8000);
+    }, 15000);
     if (res?.ok) {
       return {
         ok: true,

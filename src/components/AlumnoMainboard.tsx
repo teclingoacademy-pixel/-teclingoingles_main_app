@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users,
@@ -55,6 +55,8 @@ import { useAppContext } from '../context/AppContext';
 import { useMemo } from 'react';
 import { LibroVirtualAlumnoCompleto } from './LibroVirtualAlumnoCompleto';
 import { SafeZoneModule } from './SafeZoneModule';
+import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
+import { obtenerPerfilCompleto } from '../services/identityService';
 
 interface AlumnoMainboardProps {
   currentRole: UserRole;
@@ -72,7 +74,8 @@ interface AlumnoMainboardProps {
     isSidebarOpen,
     setIsSidebarOpen,
     globalEvents,
-    isExtracurricularUnlocked
+    isExtracurricularUnlocked,
+    userEmail
   } = useAppContext();
   const [currentView, setCurrentView] = useState('dashboard');
   const [preselectedChatId, setPreselectedChatId] = useState<string | undefined>(undefined);
@@ -80,8 +83,38 @@ interface AlumnoMainboardProps {
   const [showADNTest, setShowADNTest] = useState(false);
   const [showClubVIP, setShowClubVIP] = useState(false);
   const [isADNDone, setIsADNDone] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [studentProfileData, setStudentProfileData] = useState<Record<string, unknown>>({});
   const attendancePercentage = 98;
   const attendanceStreak = 12;
+
+  // Cargar perfil del alumno para verificar si está completo
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!userEmail) return;
+      try {
+        const perfil = await obtenerPerfilCompleto({ email: userEmail, rol: 'ALUMNO' });
+        if (perfil) {
+          const profileFields = {
+            name: perfil.nombre || '',
+            studentId: perfil.student_id || '',
+            career: perfil.carrera || '',
+            shift: perfil.turno || '',
+            semestre: perfil.semestre || '',
+            moduloTec: perfil.modulo_tec || '',
+          };
+          setStudentProfileData(profileFields);
+          // Si el perfil no está completo, mostrar el modal después de un breve delay
+          if (!isProfileComplete('ALUMNO', profileFields)) {
+            setTimeout(() => setShowOnboardingModal(true), 800);
+          }
+        }
+      } catch (err) {
+        console.warn('[AlumnoMainboard] Error loading profile:', err);
+      }
+    };
+    loadProfile();
+  }, [userEmail]);
 
   const sidebarItems: SidebarItem[] = useMemo(() => [
     { id: 'dashboard', label: t('my_dashboard'), icon: LayoutDashboard, category: 'Soporte & Global', isPrincipal: true },
@@ -441,6 +474,18 @@ interface AlumnoMainboardProps {
           />
         )}
       </AnimatePresence>
+
+      {/* Modal de Onboarding — Perfil incompleto */}
+      <ProfileOnboardingModal
+        isOpen={showOnboardingModal}
+        onClose={() => setShowOnboardingModal(false)}
+        onCompleteProfile={() => {
+          setShowOnboardingModal(false);
+          setCurrentView('settings');
+        }}
+        role="ALUMNO"
+        profileData={studentProfileData}
+      />
     </div>
   );
 }

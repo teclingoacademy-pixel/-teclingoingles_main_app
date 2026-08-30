@@ -91,6 +91,7 @@ export function UserSettings({
   // Cargar perfil desde el Data Lake al montar
   const cargarPerfilDesdeLake = async () => {
     if (!userEmail) return;
+    try {
     // Enviamos `rol` para que el backend consulte la hoja específica
     // (ALUMNOS / DOCENTES / DIRECTORES) además de USUARIOS.
     const perfil = await obtenerPerfilCompleto({ email: userEmail, rol: effectiveRole as 'ALUMNO' | 'DOCENTE' | 'DIRECTOR' });
@@ -98,9 +99,12 @@ export function UserSettings({
     // Email siempre viene del lake (autoridad única).
     const lakeEmail = (perfil.email as string) || userEmail;
     if (effectiveRole === 'ALUMNO') {
+      // NOTA: perfil.id viene de USUARIOS.id (PK). perfil.user_id viene de ALUMNOS.user_id (FK).
+      // Ambos son el mismo valor ('usr_xxx'), pero usamos perfil.id como fuente canónica.
       setStudentData(prev => ({
         ...prev,
         email: lakeEmail,
+        userId: (perfil.id as string) ?? prev.userId,    // usr_xxx — ID del sistema (fuente: USUARIOS.id)
         name: (perfil.nombre as string) ?? prev.name,
         avatar: (perfil.avatar as string) ?? prev.avatar,
         phone: (perfil.phone as string) ?? prev.phone,
@@ -127,8 +131,8 @@ export function UserSettings({
         employeeId: (perfil.student_id as string) ?? prev.employeeId,
         birthDate: (perfil.birth_date as string) ?? prev.birthDate,
         degree: (perfil.degree as string) ?? prev.degree,
-        specialties: perfil.specialties ? JSON.parse(perfil.specialties as string) : prev.specialties,
-        certifications: perfil.certifications ? JSON.parse(perfil.certifications as string) : prev.certifications,
+        specialties: (() => { try { const v = perfil.specialties; if (Array.isArray(v)) return v; if (typeof v === 'string' && v) return JSON.parse(v); return prev.specialties; } catch { return prev.specialties; } })(),
+        certifications: (() => { try { const v = perfil.certifications; if (Array.isArray(v)) return v; if (typeof v === 'string' && v) return JSON.parse(v); return prev.certifications; } catch { return prev.certifications; } })(),
       }));
     } else if (effectiveRole === 'DIRECTOR') {
       setDirData(prev => ({
@@ -153,6 +157,9 @@ export function UserSettings({
         linkedin: (perfil.linkedin as string) ?? prev.linkedin,
       }));
       if (perfil.institution_logo) setInstitutionLogo(perfil.institution_logo as string);
+    }
+    } catch (err) {
+      console.warn('[UserSettings] Error loading profile from Lake:', err);
     }
   };
 
@@ -221,11 +228,12 @@ export function UserSettings({
     bio: '',
     avatar: '',
     email: '',
-    studentId: '',
+    userId: '',        // usr_xxx — ID generado por la APP (solo lectura)
+    studentId: '',     // ID institucional que la escuela asigna (ej: INGIND-002)
     curp: '',
     phone: '',
     birthDate: '',
-    studentNumber: '',
+    studentNumber: '', // Número de control (ej: INGIND-001)
     career: '',
     shift: '',
     semestre: '',
@@ -280,13 +288,14 @@ export function UserSettings({
       return {
         name: studentData.name,
         email: emailReal,
+        userId: studentData.userId,       // usr_xxx — solo lectura
         curp: studentData.curp,
         phone: studentData.phone,
         avatar: studentData.avatar,
         bio: studentData.bio,
         birthDate: studentData.birthDate,
-        studentId: studentData.studentId,
-        studentNumber: studentData.studentNumber,
+        studentId: studentData.studentId, // ID institucional (ej: INGIND-002)
+        studentNumber: studentData.studentNumber, // Número de control
         career: studentData.career,
         shift: studentData.shift,
         level: studentData.level,
@@ -397,29 +406,40 @@ export function UserSettings({
       };
       setInstitutionName(instData.name);
     }
-    const res = await guardarPerfil({ email: userEmail, rol: effectiveRole as 'ALUMNO' | 'DOCENTE' | 'DIRECTOR', campos });
-    if (res.ok) {
-      const hoja = res.hoja ? ` en ${res.hoja}` : '';
-      setToastMessage(`Perfil guardado${hoja}`);
+    try {
+      const res = await guardarPerfil({ email: userEmail, rol: effectiveRole as 'ALUMNO' | 'DOCENTE' | 'DIRECTOR', campos });
+      if (res.ok) {
+        const hoja = res.hoja ? ` en ${res.hoja}` : '';
+        setToastMessage(`Perfil guardado${hoja}`);
+        setShowToast(true);
+        setIsDirty(false);
+        // Re-leer el perfil desde el Lake para que la UI refleje EXACTAMENTE
+        // lo persistido (autoridad única = el Data Lake, no el estado local).
+        await cargarPerfilDesdeLake();
+      } else {
+        setToastMessage('Error al guardar: ' + (res.error || 'desconocido'));
+        setShowToast(true);
+      }
+    } catch (err) {
+      setToastMessage('Error de conexion al guardar perfil');
       setShowToast(true);
-      // Re-leer el perfil desde el Lake para que la UI refleje EXACTAMENTE
-      // lo persistido (autoridad única = el Data Lake, no el estado local).
-      await cargarPerfilDesdeLake();
-    } else {
-      setToastMessage('Error al guardar: ' + (res.error || 'desconocido'));
-      setShowToast(true);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
-    setIsDirty(false);
   };
 
   const handleDiscard = async () => {
     if (isSaving) return;
+    try {
     // Descartar = volver al estado que dicta el Lake (descarta cambios locales)
     await cargarPerfilDesdeLake();
     setIsDirty(false);
     setToastMessage('Cambios descartados');
     setShowToast(true);
+    } catch (err) {
+      setToastMessage('Error al descartar cambios');
+      setShowToast(true);
+    }
   };
 
   // Handle avatar file selection and upload to Google Drive
@@ -518,7 +538,7 @@ export function UserSettings({
           </div>
           <div className="text-right shrink-0">
              <img src={institutionLogo} className="w-6 h-6 sm:w-8 sm:h-8 ml-auto mb-1 opacity-60" alt="Logo" />
-             <p className="text-white/20 text-[6px] sm:text-[8px] font-black uppercase tracking-widest">ID: {effectiveRole === 'ALUMNO' ? (studentData.studentId || 'STU-XXXX') : effectiveRole === 'DIRECTOR' ? 'DIR-2026-001' : teacherData.employeeId}</p>
+             <p className="text-white/20 text-[6px] sm:text-[8px] font-black uppercase tracking-widest">ID: {effectiveRole === 'ALUMNO' ? (studentData.userId || ' usr_xxx') : effectiveRole === 'DIRECTOR' ? 'DIR-2026-001' : teacherData.employeeId}</p>
           </div>
         </div>
 
@@ -531,7 +551,7 @@ export function UserSettings({
              </div>
           </div>
           <div className="w-10 h-10 sm:w-16 sm:h-16 bg-white p-0.5 sm:p-1 rounded-lg sm:rounded-xl shadow-2xl shrink-0 flex items-center justify-center">
-             <QRCodeSVG value={userEmail || 'unknown'} size={56} bgColor="white" fgColor="#061a1a" level="M" />
+             <QRCodeSVG value={profile.userId || userEmail || 'unknown'} size={56} bgColor="white" fgColor="#061a1a" level="M" />
           </div>
         </div>
       </motion.div>
@@ -578,8 +598,172 @@ export function UserSettings({
 
        {/* Área de Edición */}
        <div className="col-span-12 lg:col-span-9 space-y-8">
-          <AnimatePresence mode="wait">
-             {activeTab === 'DIGITAL_CARD' && (
+           <AnimatePresence mode="wait">
+              {activeTab === 'IDENTITY' && (
+                <motion.div 
+                  key="identity"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-8"
+                >
+                   <GlassCard title="Identidad Institucional" icon={Globe} accent="cyan">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                         {/* Logo */}
+                         <div className="md:col-span-2 flex items-center gap-8 p-6 bg-white/5 rounded-3xl border border-white/5">
+                            <div className="w-24 h-24 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center overflow-hidden">
+                               <img src={institutionLogo} className="w-full h-full object-contain p-2" alt="Logo Institucional" />
+                            </div>
+                            <div className="flex-1">
+                               <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">Logo Institucional</h4>
+                               <p className="text-[9px] text-white/30 font-bold mb-4 uppercase tracking-widest">Aparece en tu Digital Card y QR code (SVG/PNG, max 2MB)</p>
+                               <button 
+                                 onClick={() => {
+                                   const input = document.createElement('input');
+                                   input.type = 'file';
+                                   input.accept = 'image/*';
+                                   input.onchange = async (e) => {
+                                     const file = (e.target as HTMLInputElement).files?.[0];
+                                     if (!file || !userEmail) return;
+                                     if (file.size > 2 * 1024 * 1024) {
+                                       setToastMessage('El logo no debe exceder 2MB');
+                                       setShowToast(true);
+                                       return;
+                                     }
+                                     const base64 = await new Promise<string>((resolve, reject) => {
+                                       const reader = new FileReader();
+                                       reader.onload = () => resolve(reader.result as string);
+                                       reader.onerror = reject;
+                                       reader.readAsDataURL(file);
+                                     });
+                                     const result = await uploadAvatar(userEmail, base64, file.name, file.type);
+                                     if (result.ok && result.fileUrl) {
+                                       setInstitutionLogo(result.fileUrl);
+                                       setIsDirty(true);
+                                       setToastMessage('Logo subido correctamente');
+                                       setShowToast(true);
+                                     } else {
+                                       setToastMessage('Error al subir logo: ' + (result.error || 'desconocido'));
+                                       setShowToast(true);
+                                     }
+                                   };
+                                   input.click();
+                                 }}
+                                 className="px-4 py-2 bg-[#38BDF8]/10 border border-[#38BDF8]/20 rounded-xl text-[9px] font-black uppercase tracking-widest text-[#38BDF8] hover:bg-[#38BDF8]/20 transition-all font-bold"
+                               >
+                                 Subir Logo
+                               </button>
+                            </div>
+                         </div>
+
+                         {/* Nombre de la institución */}
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Nombre de la Institución</label>
+                            <input 
+                             type="text" 
+                             value={instData.name} 
+                             onChange={(e) => { setInstData({...instData, name: e.target.value}); setIsDirty(true); }}
+                             placeholder="Ej: TECNOLINGO AI"
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-black outline-none focus:border-[#38BDF8]/40 transition-all uppercase"
+                            />
+                         </div>
+
+                         {/* Slogan */}
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Slogan Institucional</label>
+                            <input 
+                             type="text" 
+                             value={instData.slogan} 
+                             onChange={(e) => { setInstData({...instData, slogan: e.target.value}); setIsDirty(true); }}
+                             placeholder="Tu lema o frase motivacional"
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all italic"
+                            />
+                         </div>
+
+                         {/* Teléfono institucional */}
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Teléfono Institucional</label>
+                            <input 
+                             type="text" 
+                             value={instData.phone} 
+                             onChange={(e) => { setInstData({...instData, phone: e.target.value}); setIsDirty(true); }}
+                             placeholder="+52 800 000 0000"
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                            />
+                         </div>
+
+                         {/* Email institucional */}
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Email Institucional</label>
+                            <input 
+                             type="email" 
+                             value={instData.email} 
+                             onChange={(e) => { setInstData({...instData, email: e.target.value}); setIsDirty(true); }}
+                             placeholder="contacto@institucion.edu"
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                            />
+                         </div>
+
+                         {/* Dirección */}
+                         <div className="md:col-span-2 space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Dirección</label>
+                            <input 
+                             type="text" 
+                             value={instData.address} 
+                             onChange={(e) => { setInstData({...instData, address: e.target.value}); setIsDirty(true); }}
+                             placeholder="Calle, Número, Colonia, Ciudad, Estado"
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all"
+                            />
+                         </div>
+
+                         {/* Redes sociales */}
+                         <div className="md:col-span-2 pt-4 border-t border-white/5">
+                            <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-6">Redes Sociales</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                               <div className="space-y-2">
+                                  <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
+                                     <Facebook size={10} /> Facebook
+                                  </label>
+                                  <input 
+                                   type="text" 
+                                   value={instData.facebook} 
+                                   onChange={(e) => { setInstData({...instData, facebook: e.target.value}); setIsDirty(true); }}
+                                   placeholder="facebook.com/tuinstitucion"
+                                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all"
+                                  />
+                               </div>
+                               <div className="space-y-2">
+                                  <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
+                                     <Instagram size={10} /> Instagram
+                                  </label>
+                                  <input 
+                                   type="text" 
+                                   value={instData.instagram} 
+                                   onChange={(e) => { setInstData({...instData, instagram: e.target.value}); setIsDirty(true); }}
+                                   placeholder="instagram.com/tuinstitucion"
+                                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all"
+                                  />
+                               </div>
+                               <div className="space-y-2">
+                                  <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
+                                     <Linkedin size={10} /> LinkedIn
+                                  </label>
+                                  <input 
+                                   type="text" 
+                                   value={instData.linkedin} 
+                                   onChange={(e) => { setInstData({...instData, linkedin: e.target.value}); setIsDirty(true); }}
+                                   placeholder="linkedin.com/company/tuinstitucion"
+                                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all"
+                                  />
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+                   </GlassCard>
+                </motion.div>
+              )}
+
+              {activeTab === 'DIGITAL_CARD' && (
                 <motion.div 
                   key="card-preview"
                   initial={{ opacity: 0, scale: 0.95 }}
@@ -699,26 +883,41 @@ export function UserSettings({
                          </div>
                          {effectiveRole === 'ALUMNO' && (
                            <>
+                              {/* ID Usuario — solo lectura, generado por la APP */}
                               <div className="space-y-2">
-                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Student ID</label>
+                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">ID Usuario (solo lectura)</label>
+                                 <input 
+                                  type="text" 
+                                  value={profile.userId || ''} 
+                                  readOnly
+                                  className="w-full bg-white/[0.02] border border-white/5 rounded-2xl py-4 px-6 text-white/40 text-xs font-bold outline-none cursor-not-allowed font-mono"
+                                 />
+                                 <p className="text-[8px] text-white/15 ml-1">ID único generado por la app. Aparece en tu QR code.</p>
+                              </div>
+                              {/* Número de Control — ID que la institución asigna */}
+                              <div className="space-y-2">
+                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Número de Control</label>
                                  <input 
                                   type="text" 
                                   value={profile.studentId || ''} 
                                   onChange={(e) => { profile.setStudentId?.(e.target.value); setIsDirty(true); }}
-                                  placeholder="Ej: TEC-2024-001"
+                                  placeholder="Ej: INGIND-001"
                                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
                                  />
+                                 <p className="text-[8px] text-white/15 ml-1">ID que la institución te asignó al inscribirte.</p>
                               </div>
+                              {/* Matrícula / Student ID */}
                               <div className="space-y-2">
-                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Número de Estudiante</label>
-                                <input 
-                                 type="text" 
-                                 value={profile.studentNumber || ''} 
-                                 onChange={(e) => { profile.setStudentNumber?.(e.target.value); setIsDirty(true); }}
-                                 placeholder="STU-XXXX-XXX"
-                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
-                                />
-                             </div>
+                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Matrícula</label>
+                                 <input 
+                                  type="text" 
+                                  value={profile.studentNumber || ''} 
+                                  onChange={(e) => { profile.setStudentNumber?.(e.target.value); setIsDirty(true); }}
+                                  placeholder="Ej: 2024001234"
+                                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                                 />
+                                 <p className="text-[8px] text-white/15 ml-1">Número de control o matrícula institucional.</p>
+                              </div>
                              <div className="space-y-2">
                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Carrera</label>
                                 <select
@@ -1291,12 +1490,10 @@ export function UserSettings({
                className="fixed bottom-8 right-8 z-[130] max-w-md w-full bg-[#0a0f1d] border border-[#DEFF9A]/30 rounded-[2rem] p-6 shadow-[0_20px_50px_rgba(222,255,154,0.15)] flex items-start gap-4"
              >
                <div className="w-10 h-10 rounded-xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A] shrink-0">
-                  <Calendar size={20} className="animate-pulse" />
+                  {toastMessage.includes('Error') ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}
                </div>
                <div className="flex-1">
-                  <h4 className="text-white text-xs font-black uppercase tracking-widest">[ 📅 ASESORÍA REGISTRADA CON LA MTRA. ANA LÓPEZ ]</h4>
-                  <p className="text-[10px] text-[#DEFF9A] font-bold uppercase tracking-wider mt-1">{toastMessage}</p>
-                  <p className="text-[9px] text-white/40 uppercase tracking-widest mt-2 font-mono">ID docente: {teacherData.employeeId} • Aula de Inmersión Virtual</p>
+                  <p className="text-[10px] text-[#DEFF9A] font-bold uppercase tracking-wider">{toastMessage}</p>
                </div>
                <button onClick={() => setShowToast(false)} className="text-white/20 hover:text-white transition-all">
                   <X size={16} />

@@ -142,11 +142,12 @@ export function Sidebar({
           x: isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 0 : -300,
           width: (typeof window !== 'undefined' && window.innerWidth >= 1024) ? (isSidebarCollapsed ? 96 : 288) : 288
         }}
-        className={`fixed lg:relative left-0 top-0 h-full bg-black/35 backdrop-blur-[40px] z-[90] flex flex-col overflow-hidden transition-all duration-300 transform border-r border-white/5 touch-pan-y overscroll-contain ${
+        className={`fixed lg:relative left-0 top-0 h-full backdrop-blur-[40px] z-[90] flex flex-col overflow-hidden transition-all duration-300 transform border-r border-white/5 touch-pan-y overscroll-contain ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
+        style={{ backgroundColor: 'var(--bg-main)' }}
       >
-        <div className={`p-8 border-b border-white/5 mb-4 relative neo-glass !border-opacity-0 lg:!border-opacity-10 lg:rounded-[3rem] ${isSidebarCollapsed ? 'px-4' : 'px-8'}`}>
+        <div className={`p-8 border-b border-white/5 mb-4 relative neo-glass !border-opacity-0 lg:!border-opacity-10 lg:rounded-[3rem] ${isSidebarCollapsed ? 'px-4' : 'px-8'}`} style={{ borderColor: 'var(--border-subtle)' }}>
           <div className={`flex items-center gap-3 mb-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
             <div className={`w-10 h-10 ${userColor} rounded-xl flex items-center justify-center neon-border-glow shadow-[0_0_20px_rgba(222,255,154,0.3)] shrink-0`}>
               {currentRole === 'DIRECTOR' ? <Shield className="text-[#061a1a]" size={20} fill="currentColor" /> : 
@@ -158,7 +159,7 @@ export function Sidebar({
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
               >
-                <h1 className="text-xl font-black tracking-tighter uppercase italic text-white truncate max-w-[180px]">
+                <h1 className="text-xl font-black tracking-tighter uppercase italic truncate max-w-[180px]" style={{ color: 'var(--text-main)' }}>
                   {institutionName}
                 </h1>
                 <p className="text-[#DEFF9A]/40 text-[8px] font-black uppercase tracking-[0.3em] truncate">{userSub}</p>
@@ -169,7 +170,8 @@ export function Sidebar({
           {/* Desktop Toggle Button */}
           <button 
             onClick={toggleCollapse}
-            className="hidden lg:flex absolute -right-3 top-10 w-8 h-8 rounded-full bg-[#061a1a] border border-white/10 items-center justify-center text-white/40 hover:text-[#DEFF9A] transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] z-20"
+            className="hidden lg:flex absolute -right-3 top-10 w-8 h-8 rounded-full border border-white/10 items-center justify-center text-white/40 hover:text-[#DEFF9A] transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] z-20"
+            style={{ backgroundColor: 'var(--bg-main)' }}
           >
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
@@ -177,7 +179,8 @@ export function Sidebar({
           {/* Mobile Close Button */}
           <button 
             onClick={closeMobile}
-            className="lg:hidden absolute top-8 right-8 text-white/20 hover:text-white"
+            className="lg:hidden absolute top-8 right-8 hover:text-white"
+            style={{ color: 'var(--text-muted)' }}
           >
             <X size={20} />
           </button>
@@ -218,11 +221,12 @@ export function Sidebar({
                       }}
                       className={`w-full flex items-center p-4 rounded-2xl transition-all group relative ${
                         principalItem.disabled
-                          ? 'opacity-25 cursor-not-allowed text-white/30 hover:bg-transparent select-none'
+                          ? 'opacity-25 cursor-not-allowed hover:bg-transparent select-none'
                           : isActive 
                             ? 'bg-[#DEFF9A]/10 text-[#DEFF9A] border border-[#DEFF9A]/20 shadow-[0_0_20px_rgba(222,255,154,0.1)]' 
-                            : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'
+                            : 'hover:text-white hover:bg-white/5 border border-transparent'
                       } ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}
+                      style={{ color: principalItem.disabled ? 'var(--text-muted)' : undefined }}
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative">
@@ -250,7 +254,8 @@ export function Sidebar({
                           {anidadoItems.length > 0 && (
                             <ChevronDown 
                               size={12} 
-                              className={`transition-transform duration-200 text-white/30 group-hover:text-white ${isExpanded ? 'rotate-180' : ''}`} 
+                              className={`transition-transform duration-200 group-hover:text-white ${isExpanded ? 'rotate-180' : ''}`}
+                              style={{ color: 'var(--text-muted)' }} 
                             />
                           )}
                         </div>
@@ -269,7 +274,8 @@ export function Sidebar({
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.15, ease: 'easeInOut' }}
-                          className="overflow-hidden pl-5 ml-4 border-l border-white/5 space-y-1.5 mt-1 pb-2"
+                          className="overflow-hidden pl-5 ml-4 border-l space-y-1.5 mt-1 pb-2"
+                        style={{ borderColor: 'var(--border-light)' }}
                         >
                           {anidadoItems.map((subItem) => {
                             const isSubActive = currentView === subItem.id;
@@ -284,11 +290,12 @@ export function Sidebar({
                                 }}
                                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group relative text-left ${
                                   subItem.disabled
-                                    ? 'opacity-25 cursor-not-allowed text-white/30 hover:bg-transparent select-none'
+                                    ? 'opacity-25 cursor-not-allowed hover:bg-transparent select-none'
                                     : isSubActive
                                       ? 'bg-white/5 text-[#DEFF9A] border border-[#DEFF9A]/20 shadow-[0_0_15px_rgba(222,255,154,0.05)]'
-                                      : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'
+                                      : 'hover:text-white hover:bg-white/5 border border-transparent'
                                 }`}
+                                style={{ color: subItem.disabled ? 'var(--text-muted)' : undefined }}
                               >
                                 <div className="flex items-center gap-3">
                                   <subItem.icon size={14} className={subItem.disabled ? 'opacity-20' : isSubActive ? 'text-[#DEFF9A]' : 'opacity-40 group-hover:opacity-100'} />
@@ -376,23 +383,25 @@ export function Sidebar({
           )}
         </nav>
 
-        <div className={`p-6 border-t border-white/5 space-y-6 mt-auto bg-transparent z-20 ${isSidebarCollapsed ? 'px-2 items-center' : 'p-6 pb-24 lg:pb-12'}`}>
+        <div className={`p-6 border-t space-y-6 mt-auto bg-transparent z-20 ${isSidebarCollapsed ? 'px-2 items-center' : 'p-6 pb-24 lg:pb-12'}`} style={{ borderColor: 'var(--border-subtle)' }}>
           {!isSidebarCollapsed && (
             <>
               {/* Theme/Language Selectors */}
               <div className="grid grid-cols-2 gap-2">
-                 <div className="bg-white/5 rounded-xl border border-white/10 p-1 flex">
+                 <div className="rounded-xl border p-1 flex glass-surface">
                     <button 
                       onClick={() => setTheme(theme === 'dark' ? 'light' : theme === 'light' ? 'normal' : 'dark')}
-                      className="flex-1 flex items-center justify-center py-2 rounded-lg hover:bg-white/5 transition-all text-white/40 hover:text-white"
+                      className="flex-1 flex items-center justify-center py-2 rounded-lg hover:bg-white/5 transition-all hover:text-white"
+                      style={{ color: 'var(--text-muted)' }}
                       title="Toggle Theme"
                     >
                        {theme === 'dark' ? <Moon size={14} /> : theme === 'light' ? <Sun size={14} /> : <Monitor size={14} />}
                     </button>
-                    <div className="w-px h-4 bg-white/10 self-center" />
+                    <div className="w-px h-4 self-center" style={{ backgroundColor: 'var(--border-subtle)' }} />
                     <button 
                       onClick={() => setLanguage(language === 'es' ? 'en' : 'es')}
-                      className="flex-1 flex items-center justify-center py-2 rounded-lg hover:bg-white/5 transition-all text-white/40 hover:text-white"
+                      className="flex-1 flex items-center justify-center py-2 rounded-lg hover:bg-white/5 transition-all hover:text-white"
+                      style={{ color: 'var(--text-muted)' }}
                       title="Toggle Language"
                     >
                        <Languages size={14} />
@@ -421,7 +430,7 @@ export function Sidebar({
               </div>
               )}
 
-              <div className="p-4 rounded-3xl bg-white/5 border border-white/10 flex items-center gap-3">
+              <div className="p-4 rounded-3xl flex items-center gap-3 glass-surface">
                 <div className={`w-8 h-8 rounded-full ${userColor} flex items-center justify-center text-[#061a1a] font-black shrink-0 shadow-glow`}>
                   {userInitials}
                 </div>

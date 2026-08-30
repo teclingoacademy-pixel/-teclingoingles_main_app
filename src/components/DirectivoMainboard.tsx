@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -56,6 +56,8 @@ import { DirectorLibrary } from './DirectorLibrary';
 import { RealTimeMonitorPanel } from './RealTimeMonitorPanel';
 import { LibroVirtualDirectorCompleto } from './LibroVirtualDirectorCompleto';
 import { AccessControlModule } from './AccessControlModule';
+import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
+import { obtenerPerfilCompleto } from '../services/identityService';
 
 import { TeachersMaster } from './TeachersMaster';
 
@@ -82,11 +84,37 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     foliosEnabled,
     identityEnabled,
     reticularEnabled,
-    distributionEnabled
+    distributionEnabled,
+    userEmail
   } = useAppContext();
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(undefined);
   const [targetChatId, setTargetChatId] = useState<string | null>(null);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [directorProfileData, setDirectorProfileData] = useState<Record<string, unknown>>({});
+
+  // Cargar perfil del director para verificar si está completo
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!userEmail) return;
+      try {
+        const perfil = await obtenerPerfilCompleto({ email: userEmail, rol: 'DIRECTOR' });
+        if (perfil) {
+          const profileFields = {
+            name: perfil.nombre || '',
+            institutionName: perfil.institution_name || '',
+          };
+          setDirectorProfileData(profileFields);
+          if (!isProfileComplete('DIRECTOR', profileFields)) {
+            setTimeout(() => setShowOnboardingModal(true), 800);
+          }
+        }
+      } catch (err) {
+        console.warn('[DirectivoMainboard] Error loading profile:', err);
+      }
+    };
+    loadProfile();
+  }, [userEmail]);
 
   const handleNavigateToFullChat = (userId: string) => {
     setTargetChatId(userId);
@@ -304,6 +332,18 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
 
         <QuickChat onNavigateToFullChat={handleNavigateToFullChat} />
       </main>
+
+      {/* Modal de Onboarding — Perfil incompleto */}
+      <ProfileOnboardingModal
+        isOpen={showOnboardingModal}
+        onClose={() => setShowOnboardingModal(false)}
+        onCompleteProfile={() => {
+          setShowOnboardingModal(false);
+          setCurrentView('settings');
+        }}
+        role="DIRECTOR"
+        profileData={directorProfileData}
+      />
     </div>
   );
 }

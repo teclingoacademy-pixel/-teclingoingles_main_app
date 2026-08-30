@@ -59,6 +59,8 @@ import { QRScannerModule } from './QRScannerModule';
 import { useAppContext } from '../context/AppContext';
 import { SafeZoneTeacherAnalytics } from './SafeZoneTeacherAnalytics';
 import { TeacherGrades } from './TeacherGrades';
+import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
+import { obtenerPerfilCompleto } from '../services/identityService';
 
 interface DocenteMainboardProps {
   currentRole: UserRole;
@@ -168,9 +170,12 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
     isSidebarOpen,
     setIsSidebarOpen,
     globalEvents,
-    groups: contextGroups
+    groups: contextGroups,
+    userEmail
   } = useAppContext();
   const [currentView, setCurrentView] = useState('dashboard');
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [teacherProfileData, setTeacherProfileData] = useState<Record<string, unknown>>({});
   
   // Custom states for group selection and auto-swapping schedule logic
   const [groups, setGroups] = useState<GroupData[]>(groupsDataset);
@@ -243,6 +248,30 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
   const [isScanning, setIsScanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedGroupForAttendance, setSelectedGroupForAttendance] = useState<string | null>(null);
+
+  // Cargar perfil del docente para verificar si está completo
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!userEmail) return;
+      try {
+        const perfil = await obtenerPerfilCompleto({ email: userEmail, rol: 'DOCENTE' });
+        if (perfil) {
+          const profileFields = {
+            name: perfil.nombre || '',
+            employeeId: perfil.student_id || '',
+            degree: perfil.degree || '',
+          };
+          setTeacherProfileData(profileFields);
+          if (!isProfileComplete('DOCENTE', profileFields)) {
+            setTimeout(() => setShowOnboardingModal(true), 800);
+          }
+        }
+      } catch (err) {
+        console.warn('[DocenteMainboard] Error loading profile:', err);
+      }
+    };
+    loadProfile();
+  }, [userEmail]);
 
   const activeGroup = groups[currentGroupIdx];
   const presentCount = activeGroup ? activeGroup.students.filter(s => s.present).length : 0;
@@ -791,6 +820,18 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
           />
         )}
       </AnimatePresence>
+
+      {/* Modal de Onboarding — Perfil incompleto */}
+      <ProfileOnboardingModal
+        isOpen={showOnboardingModal}
+        onClose={() => setShowOnboardingModal(false)}
+        onCompleteProfile={() => {
+          setShowOnboardingModal(false);
+          setCurrentView('settings');
+        }}
+        role="DOCENTE"
+        profileData={teacherProfileData}
+      />
 
       <style>{`
         @keyframes scan {

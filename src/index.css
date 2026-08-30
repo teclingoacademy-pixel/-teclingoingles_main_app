@@ -20,6 +20,12 @@
     --glass-border: rgba(222, 255, 154, 0.15);
     --bg-main: #061a1a;
     --text-main: #f8fafc;
+    --text-muted: rgba(248, 250, 252, 0.4);
+    --text-secondary: rgba(248, 250, 252, 0.6);
+    --overlay: rgba(255, 255, 255, 0.05);
+    --overlay-hover: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.1);
+    --border-light: rgba(255, 255, 255, 0.05);
   }
 
   :root.light {
@@ -28,6 +34,26 @@
     --glass-border: rgba(6, 26, 26, 0.1);
     --bg-main: #f8fafc;
     --text-main: #061a1a;
+    --text-muted: rgba(6, 26, 26, 0.4);
+    --text-secondary: rgba(6, 26, 26, 0.6);
+    --overlay: rgba(6, 26, 26, 0.05);
+    --overlay-hover: rgba(6, 26, 26, 0.1);
+    --border-subtle: rgba(6, 26, 26, 0.1);
+    --border-light: rgba(6, 26, 26, 0.05);
+  }
+
+  :root.dark {
+    --teal-dark: #061a1a;
+    --glass: rgba(255, 255, 255, 0.04);
+    --glass-border: rgba(222, 255, 154, 0.15);
+    --bg-main: #061a1a;
+    --text-main: #f8fafc;
+    --text-muted: rgba(248, 250, 252, 0.4);
+    --text-secondary: rgba(248, 250, 252, 0.6);
+    --overlay: rgba(255, 255, 255, 0.05);
+    --overlay-hover: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.1);
+    --border-light: rgba(255, 255, 255, 0.05);
   }
 
   body {
@@ -92,11 +118,57 @@
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), inset 0 0 15px rgba(222, 255, 154, 0.05);
   }
 
+  :root.light .neo-glass {
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1), inset 0 0 15px rgba(6, 26, 26, 0.02);
+  }
+
   .bevel-text {
     text-shadow: 0 0 10px rgba(222, 255, 154, 0.4);
   }
 
+  :root.light .bevel-text {
+    text-shadow: 0 0 10px rgba(6, 26, 26, 0.15);
+  }
+
   .neon-border-glow {
     box-shadow: 0 0 8px var(--neon);
+  }
+
+  /* Theme-aware utility classes */
+  .bg-theme {
+    background-color: var(--bg-main);
+  }
+
+  .bg-overlay {
+    background-color: var(--overlay);
+  }
+
+  .bg-overlay-hover:hover {
+    background-color: var(--overlay-hover);
+  }
+
+  .text-default {
+    color: var(--text-main);
+  }
+
+  .text-faded {
+    color: var(--text-muted);
+  }
+
+  .text-soft {
+    color: var(--text-secondary);
+  }
+
+  .border-theme {
+    border-color: var(--border-subtle);
+  }
+
+  .border-faint {
+    border-color: var(--border-light);
+  }
+
+  .glass-surface {
+    background: var(--glass);
+    border-color: var(--glass-border);
   }
 }

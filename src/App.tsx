@@ -65,7 +65,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen bg-[#061a1a] text-white font-sans selection:bg-[#DEFF9A] selection:text-black overflow-hidden relative">
+    <div className="h-screen bg-[var(--bg-main)] text-[var(--text-main)] font-sans selection:bg-[#DEFF9A] selection:text-black overflow-hidden relative">
       <AnimatePresence>
         {maintenanceMode && currentRole === 'ALUMNO' && (
           <motion.div 
