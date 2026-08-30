@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { apiUrl } from '../../services/apiConfig';
 import { 
   Headphones, 
   ChevronLeft, 
@@ -180,7 +181,7 @@ export function ListeningLab({ onClose }: { onClose: () => void }) {
     }
 
     try {
-      const res = await fetch('/api/tts', {
+      const res = await fetch(apiUrl('/api/tts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

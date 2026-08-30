@@ -171,11 +171,11 @@ export function QRScannerModule({ onScanSuccess, onClose }: QRScannerModuleProps
   const toggleFlash = async () => {
     if (scannerRef.current) {
       try {
-        const track = scannerRef.current.getRunningTrack();
-        if (track && track.getCapabilities().torch) {
-          await track.applyConstraints({
-            advanced: [{ torch: !isFlashOn } as any]
-          });
+        const capabilities = scannerRef.current.getRunningTrackCapabilities();
+        if (capabilities && (capabilities as any).torch) {
+          await scannerRef.current.applyVideoConstraints({
+            advanced: [{ torch: !isFlashOn }] as any
+          } as MediaTrackConstraints);
           setIsFlashOn(!isFlashOn);
         }
       } catch (e) {

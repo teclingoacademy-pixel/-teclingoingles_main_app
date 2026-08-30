@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { GlassCard } from './GlassCard';
+import { obtenerLogros } from '../services/identityService';
+import { useAppContext } from '../context/AppContext';
 
 interface Achievement {
   id: string;
@@ -87,50 +89,82 @@ const recentFeed = [
 ];
 
 export function AchievementWall() {
+  const { userEmail } = useAppContext();
   const [list, setList] = useState<Achievement[]>([]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('library_student_achievements');
-      let rawList = defaultMockAchievements;
-      if (saved) {
-        rawList = JSON.parse(saved);
-      }
-
-      // Enforce absolute key uniqueness to prevent duplicate React runtime key messages
-      const seen = new Set<string>();
-      const uniqueList: any[] = [];
-      for (const item of rawList) {
-        let id = item.id;
-        if (!id || seen.has(id)) {
-          id = 'ach_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    const loadAchievements = async () => {
+      try {
+        // 1. Intentar cargar desde el Lake
+        if (userEmail) {
+          const logrosLake = await obtenerLogros(userEmail);
+          if (logrosLake.length > 0) {
+            const mapped = logrosLake.map((item: any) => {
+              let iconComp = Award;
+              const iconName = item.iconName || item.icon_name || 'Award';
+              if (iconName === 'Zap') iconComp = Zap;
+              else if (iconName === 'Star') iconComp = Star;
+              else if (iconName === 'Trophy') iconComp = Trophy;
+              else if (iconName === 'Leaf') iconComp = Leaf;
+              else if (iconName === 'Medal') iconComp = Medal;
+              else if (iconName === 'Sparkles') iconComp = Sparkles;
+              else if (iconName === 'History') iconComp = History;
+              return {
+                id: item.id || item.logro_id,
+                category: item.app_origen || 'STUDENT',
+                title: item.titulo || item.title || 'Logro',
+                description: item.descripcion || item.description || '',
+                value: item.valor || item.value || '',
+                icon: iconComp,
+                accent: item.accent || 'green',
+                studentName: item.studentName || '',
+                createdAt: item.fecha || item.created_at || ''
+              };
+            });
+            setList(mapped);
+            return;
+          }
         }
-        seen.add(id);
-        uniqueList.push({ ...item, id });
+
+        // 2. Fallback: localStorage
+        const saved = localStorage.getItem('library_student_achievements');
+        let rawList = defaultMockAchievements;
+        if (saved) {
+          rawList = JSON.parse(saved);
+        }
+
+        const seen = new Set<string>();
+        const uniqueList: any[] = [];
+        for (const item of rawList) {
+          let id = item.id;
+          if (!id || seen.has(id)) {
+            id = 'ach_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+          }
+          seen.add(id);
+          uniqueList.push({ ...item, id });
+        }
+
+        const mapped = uniqueList.map((item: any) => {
+          let iconComp = Award;
+          if (item.iconName === 'Zap') iconComp = Zap;
+          else if (item.iconName === 'Star') iconComp = Star;
+          else if (item.iconName === 'Trophy') iconComp = Trophy;
+          else if (item.iconName === 'Leaf') iconComp = Leaf;
+          else if (item.iconName === 'Medal') iconComp = Medal;
+          else if (item.iconName === 'Sparkles') iconComp = Sparkles;
+          else if (item.iconName === 'History') iconComp = History;
+          return { ...item, icon: iconComp };
+        });
+
+        setList(mapped);
+        localStorage.setItem('library_student_achievements', JSON.stringify(uniqueList));
+      } catch (e) {
+        console.error('[AchievementWall] Error loading:', e);
       }
+    };
 
-      const mapped = uniqueList.map((item: any) => {
-        let iconComp = Award;
-        if (item.iconName === 'Zap') iconComp = Zap;
-        else if (item.iconName === 'Star') iconComp = Star;
-        else if (item.iconName === 'Trophy') iconComp = Trophy;
-        else if (item.iconName === 'Leaf') iconComp = Leaf;
-        else if (item.iconName === 'Medal') iconComp = Medal;
-        else if (item.iconName === 'Sparkles') iconComp = Sparkles;
-        else if (item.iconName === 'History') iconComp = History;
-        return {
-          ...item,
-          icon: iconComp
-        };
-      });
-
-      setList(mapped);
-      // Sincronizar de vuelta a localStorage por si se sanearon llaves duplicadas
-      localStorage.setItem('library_student_achievements', JSON.stringify(uniqueList));
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
+    loadAchievements();
+  }, [userEmail]);
 
   return (
     <motion.div 

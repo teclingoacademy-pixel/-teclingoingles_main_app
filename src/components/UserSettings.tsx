@@ -36,9 +36,11 @@ import {
   Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import { GlassCard } from './GlassCard';
 import { useAppContext, UserRole } from '../context/AppContext';
 import { ModuleManagement } from './ModuleManagement';
+import { guardarPerfil, obtenerPerfilCompleto, uploadAvatar } from '../services/identityService';
 
 export function UserSettings({ 
   role, 
@@ -55,19 +57,29 @@ export function UserSettings({
     maintenanceMode,
     setMaintenanceMode,
     identityEnabled,
-    currentRole: contextRole
+    currentRole: contextRole,
+    userEmail
   } = useAppContext();
   
   const effectiveRole = role || contextRole;
   
   const [activeTab, setActiveTab] = useState<'IDENTITY' | 'PERSONAL' | 'PROFESSIONAL' | 'SECURITY' | 'DIGITAL_CARD' | 'MODULES'>(effectiveRole === 'ALUMNO' ? 'PERSONAL' : 'PERSONAL');
   const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Side panel colapsable para los botones de Guardar/Descartar
+  const [isSavePanelCollapsed, setIsSavePanelCollapsed] = useState(false);
+  // Modal de advertencia cuando se intenta cambiar de tab/página con cambios sin guardar
+  const [pendingTab, setPendingTab] = useState<typeof activeTab | null>(null);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   // States for Advisor booking and Toast status
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (showToast) {
@@ -75,87 +87,260 @@ export function UserSettings({
       return () => clearTimeout(timer);
     }
   }, [showToast]);
+
+  // Cargar perfil desde el Data Lake al montar
+  const cargarPerfilDesdeLake = async () => {
+    if (!userEmail) return;
+    // Enviamos `rol` para que el backend consulte la hoja específica
+    // (ALUMNOS / DOCENTES / DIRECTORES) además de USUARIOS.
+    const perfil = await obtenerPerfilCompleto({ email: userEmail, rol: effectiveRole as 'ALUMNO' | 'DOCENTE' | 'DIRECTOR' });
+    if (!perfil) return;
+    // Email siempre viene del lake (autoridad única).
+    const lakeEmail = (perfil.email as string) || userEmail;
+    if (effectiveRole === 'ALUMNO') {
+      setStudentData(prev => ({
+        ...prev,
+        email: lakeEmail,
+        name: (perfil.nombre as string) ?? prev.name,
+        avatar: (perfil.avatar as string) ?? prev.avatar,
+        phone: (perfil.phone as string) ?? prev.phone,
+        bio: (perfil.bio as string) ?? prev.bio,
+        curp: (perfil.curp as string) ?? prev.curp,
+        studentId: (perfil.student_id as string) ?? prev.studentId,
+        birthDate: (perfil.birth_date as string) ?? prev.birthDate,
+        studentNumber: (perfil.numero_control as string) ?? prev.studentNumber,
+        career: (perfil.carrera as string) ?? prev.career,
+        shift: (perfil.turno as string) ?? prev.shift,
+        level: (perfil.nivel as string) ?? prev.level,
+        semestre: (perfil.semestre as string) ?? prev.semestre,
+        moduloTec: (perfil.modulo_tec as string) ?? prev.moduloTec,
+      }));
+    } else if (effectiveRole === 'DOCENTE') {
+      setTeacherData(prev => ({
+        ...prev,
+        email: lakeEmail,
+        name: (perfil.nombre as string) ?? prev.name,
+        avatar: (perfil.avatar as string) ?? prev.avatar,
+        phone: (perfil.phone as string) ?? prev.phone,
+        bio: (perfil.bio as string) ?? prev.bio,
+        curp: (perfil.curp as string) ?? prev.curp,
+        employeeId: (perfil.student_id as string) ?? prev.employeeId,
+        birthDate: (perfil.birth_date as string) ?? prev.birthDate,
+        degree: (perfil.degree as string) ?? prev.degree,
+        specialties: perfil.specialties ? JSON.parse(perfil.specialties as string) : prev.specialties,
+        certifications: perfil.certifications ? JSON.parse(perfil.certifications as string) : prev.certifications,
+      }));
+    } else if (effectiveRole === 'DIRECTOR') {
+      setDirData(prev => ({
+        ...prev,
+        email: lakeEmail,
+        name: (perfil.nombre as string) ?? prev.name,
+        avatar: (perfil.avatar as string) ?? prev.avatar,
+        phone: (perfil.phone as string) ?? prev.phone,
+        bio: (perfil.bio as string) ?? prev.bio,
+        curp: (perfil.curp as string) ?? prev.curp,
+        birthDate: (perfil.birth_date as string) ?? prev.birthDate,
+      }));
+      setInstData(prev => ({
+        ...prev,
+        name: (perfil.institution_name as string) ?? prev.name,
+        slogan: (perfil.slogan as string) ?? prev.slogan,
+        phone: (perfil.inst_phone as string) ?? prev.phone,
+        address: (perfil.address as string) ?? prev.address,
+        email: (perfil.inst_email as string) ?? prev.email,
+        facebook: (perfil.facebook as string) ?? prev.facebook,
+        instagram: (perfil.instagram as string) ?? prev.instagram,
+        linkedin: (perfil.linkedin as string) ?? prev.linkedin,
+      }));
+      if (perfil.institution_logo) setInstitutionLogo(perfil.institution_logo as string);
+    }
+  };
+
+  useEffect(() => {
+    cargarPerfilDesdeLake();
+  }, [userEmail, effectiveRole]);
+
+  // Aviso al cerrar la pestaña / recargar con cambios sin guardar
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // Interceptar cambios de tab cuando hay cambios sin guardar
+  const requestTabChange = (newTab: typeof activeTab) => {
+    if (isDirty && newTab !== activeTab) {
+      setPendingTab(newTab);
+      setShowUnsavedModal(true);
+    } else {
+      setActiveTab(newTab);
+    }
+  };
+
+  const handleSaveAndSwitch = async () => {
+    await handleSave();
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
+    setShowUnsavedModal(false);
+  };
+
+  const handleDiscardAndSwitch = async () => {
+    await handleDiscard();
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
+    setShowUnsavedModal(false);
+  };
   
-  // Docente Data (University Style)
+  // Docente Data — vacío por defecto; se hidrata desde el Data Lake.
   const [teacherData, setTeacherData] = useState({
-    name: 'Mtra. Ana López',
-    degree: 'Mtra. en Lingüística Aplicada',
-    specialties: ['Inglés Académico', 'Filtro Afectivo', 'IA en el Aula'],
-    bio: 'Especialista en la enseñanza de segundas lenguas con más de 12 años de trayectoria. Enfocada en la integración de modelos neuronales para la aceleración del aprendizaje.',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80',
-    email: 'ana.lopez@teclingo.ai',
-    employeeId: 'TEA-2026-042',
-    curp: 'LOZA850612MDFXXXX',
-    phone: '+52 833 456 7890',
-    birthDate: '1985-06-12',
-    certifications: [
-      { id: '1', name: 'TOEFL iBT - 110 pts', date: '2025-01-10' },
-      { id: '2', name: 'Cambridge C2 Proficiency', date: '2024-05-22' }
-    ]
+    name: '',
+    degree: '',
+    specialties: [] as string[],
+    bio: '',
+    avatar: '',
+    email: '',
+    employeeId: '',
+    curp: '',
+    phone: '',
+    birthDate: '',
+    certifications: [] as { id: string; name: string; date: string }[]
   });
 
-  // Student Data (Active Learner)
+  // Student Data — vacío por defecto; se hidrata desde el Data Lake.
   const [studentData, setStudentData] = useState({
-    name: 'Kevin Marshall',
-    level: 'Alumno Inmersivo A1',
-    bio: 'Estudiante de nivel A1 enfocado en el dominio del idioma inglés a través de laboratorios de IA inmersiva.',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80',
-    email: 'kevin.marshall@teclingo.ai',
-    studentId: 'STU-2026-001',
-    curp: 'MARC060515HDFRRL09',
-    phone: '+52 833 987 6543',
-    birthDate: '2006-05-15'
+    name: '',
+    level: '',
+    bio: '',
+    avatar: '',
+    email: '',
+    studentId: '',
+    curp: '',
+    phone: '',
+    birthDate: '',
+    studentNumber: '',
+    career: '',
+    shift: '',
+    semestre: '',
+    moduloTec: ''
   });
 
   const [dirData, setDirData] = useState({
-    name: 'Carlos Rodríguez',
-    curp: 'RODC780512HDFRR05',
-    phone: '+52 833 123 4567',
-    birthDate: '1978-05-12',
-    bio: 'Apasionado por la tecnología y la educación disruptiva.',
-    email: 'carlos.rodriguez@teclingo.ai',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=80'
+    name: '',
+    curp: '',
+    phone: '',
+    birthDate: '',
+    bio: '',
+    email: '',
+    avatar: ''
   });
 
+  // Catálogo de opciones — fuente única de verdad.
+  // Coincide EXACTAMENTE con los menús desplegables de la hoja ALUMNOS
+  // en el Data Lake (valores en MAYÚSCULAS, sin acentos).
+  // Cualquier valor fuera de estos catálogos es rechazado por el backend.
+  const CARRERAS = [
+    'ING INDUSTRIAL',
+    'ING SISTEMAS',
+    'ING CIVIL',
+    'ING MECATRONICA',
+    'LIC. ADMINISTRACION',
+    'CONTADURIA',
+    'ARQUITECTURA',
+  ];
+  const TURNOS = ['MATUTINO', 'VESPERTINO', 'SEMI-ESCOLARIZADO'];
+  const SEMESTRES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  // Mapeo canónico modulo_tec -> nivel_ingles. El backend sincroniza
+  // USUARIOS.nivel automáticamente desde modulo_tec.
+  const MODULOS_TEC: { value: string; nivel: string; label: string }[] = [
+    { value: 'I',   nivel: 'A1',  label: 'I (A1)' },
+    { value: 'II',  nivel: 'A1+', label: 'II (A1+)' },
+    { value: 'III', nivel: 'A2',  label: 'III (A2)' },
+    { value: 'IV',  nivel: 'A2+', label: 'IV (A2+)' },
+    { value: 'V',   nivel: 'B1',  label: 'V (B1)' },
+    { value: 'VI',  nivel: 'B2',  label: 'VI (B2)' },
+  ];
+  // nivel_ingles se deriva de modulo_tec en el backend; no se expone al usuario.
+
   const getProfileData = () => {
+    // Email es identidad y SIEMPRE viene del Lake (no del estado local hardcoded).
+    const emailReal = userEmail || (
+      effectiveRole === 'ALUMNO' ? studentData.email :
+      effectiveRole === 'DIRECTOR' ? dirData.email :
+      teacherData.email
+    );
     if (effectiveRole === 'ALUMNO') {
       return {
         name: studentData.name,
-        email: studentData.email,
+        email: emailReal,
         curp: studentData.curp,
         phone: studentData.phone,
         avatar: studentData.avatar,
         bio: studentData.bio,
+        birthDate: studentData.birthDate,
+        studentId: studentData.studentId,
+        studentNumber: studentData.studentNumber,
+        career: studentData.career,
+        shift: studentData.shift,
+        level: studentData.level,
+        semestre: studentData.semestre,
+        moduloTec: studentData.moduloTec,
         setName: (name: string) => setStudentData(prev => ({ ...prev, name })),
         setPhone: (phone: string) => setStudentData(prev => ({ ...prev, phone })),
         setBio: (bio: string) => setStudentData(prev => ({ ...prev, bio })),
         setAvatar: (avatar: string) => setStudentData(prev => ({ ...prev, avatar })),
+        setCurp: (curp: string) => setStudentData(prev => ({ ...prev, curp })),
+        setBirthDate: (d: string) => setStudentData(prev => ({ ...prev, birthDate: d })),
+        setStudentId: (id: string) => setStudentData(prev => ({ ...prev, studentId: id })),
+        setStudentNumber: (n: string) => setStudentData(prev => ({ ...prev, studentNumber: n })),
+        setCareer: (c: string) => setStudentData(prev => ({ ...prev, career: c })),
+        setShift: (s: string) => setStudentData(prev => ({ ...prev, shift: s })),
+        setLevel: (l: string) => setStudentData(prev => ({ ...prev, level: l })),
+        setSemestre: (v: string) => setStudentData(prev => ({ ...prev, semestre: v })),
+        setModuloTec: (v: string) => setStudentData(prev => ({ ...prev, moduloTec: v })),
       };
     } else if (effectiveRole === 'DIRECTOR') {
       return {
         name: dirData.name,
-        email: dirData.email,
+        email: emailReal,
         curp: dirData.curp,
         phone: dirData.phone,
         avatar: dirData.avatar,
         bio: dirData.bio,
+        birthDate: dirData.birthDate,
         setName: (name: string) => setDirData(prev => ({ ...prev, name })),
         setPhone: (phone: string) => setDirData(prev => ({ ...prev, phone })),
         setBio: (bio: string) => setDirData(prev => ({ ...prev, bio })),
         setAvatar: (avatar: string) => setDirData(prev => ({ ...prev, avatar })),
+        setCurp: (curp: string) => setDirData(prev => ({ ...prev, curp })),
+        setBirthDate: (d: string) => setDirData(prev => ({ ...prev, birthDate: d })),
       };
     } else {
       return {
         name: teacherData.name,
-        email: teacherData.email,
+        email: emailReal,
         curp: teacherData.curp,
         phone: teacherData.phone,
         avatar: teacherData.avatar,
         bio: teacherData.bio,
+        birthDate: teacherData.birthDate,
+        degree: teacherData.degree,
+        specialties: teacherData.specialties,
+        employeeId: teacherData.employeeId,
         setName: (name: string) => setTeacherData(prev => ({ ...prev, name })),
         setPhone: (phone: string) => setTeacherData(prev => ({ ...prev, phone })),
         setBio: (bio: string) => setTeacherData(prev => ({ ...prev, bio })),
         setAvatar: (avatar: string) => setTeacherData(prev => ({ ...prev, avatar })),
+        setCurp: (curp: string) => setTeacherData(prev => ({ ...prev, curp })),
+        setBirthDate: (d: string) => setTeacherData(prev => ({ ...prev, birthDate: d })),
+        setDegree: (deg: string) => setTeacherData(prev => ({ ...prev, degree: deg })),
       };
     }
   };
@@ -173,17 +358,130 @@ export function UserSettings({
     linkedin: 'linkedin.com/company/teclingo'
   });
 
-  const handleSave = () => {
-    if (effectiveRole === 'DIRECTOR') {
+  const handleSave = async () => {
+    if (!userEmail || isSaving) return;
+    setIsSaving(true);
+    let campos: Record<string, string> = {};
+    if (effectiveRole === 'ALUMNO') {
+      campos = {
+        nombre: studentData.name, avatar: studentData.avatar,
+        phone: studentData.phone, bio: studentData.bio,
+        curp: studentData.curp, student_id: studentData.studentId,
+        birth_date: studentData.birthDate,
+        // nivel se sincroniza automáticamente desde modulo_tec en el backend.
+        numero_control: studentData.studentNumber,
+        carrera: studentData.career, turno: studentData.shift,
+        semestre: studentData.semestre,
+        modulo_tec: studentData.moduloTec,
+        // nivel_ingles lo calcula y persiste el backend a partir de modulo_tec.
+      };
+    } else if (effectiveRole === 'DOCENTE') {
+      campos = {
+        nombre: teacherData.name, avatar: teacherData.avatar,
+        phone: teacherData.phone, bio: teacherData.bio,
+        curp: teacherData.curp, student_id: teacherData.employeeId,
+        birth_date: teacherData.birthDate, degree: teacherData.degree,
+        specialties: JSON.stringify(teacherData.specialties),
+        certifications: JSON.stringify(teacherData.certifications),
+      };
+    } else if (effectiveRole === 'DIRECTOR') {
+      campos = {
+        nombre: dirData.name, avatar: dirData.avatar,
+        phone: dirData.phone, bio: dirData.bio,
+        curp: dirData.curp, birth_date: dirData.birthDate,
+        institution_name: instData.name, institution_logo: institutionLogo,
+        slogan: instData.slogan, inst_phone: instData.phone,
+        address: instData.address, inst_email: instData.email,
+        facebook: instData.facebook, instagram: instData.instagram,
+        linkedin: instData.linkedin,
+      };
       setInstitutionName(instData.name);
     }
+    const res = await guardarPerfil({ email: userEmail, rol: effectiveRole as 'ALUMNO' | 'DOCENTE' | 'DIRECTOR', campos });
+    if (res.ok) {
+      const hoja = res.hoja ? ` en ${res.hoja}` : '';
+      setToastMessage(`Perfil guardado${hoja}`);
+      setShowToast(true);
+      // Re-leer el perfil desde el Lake para que la UI refleje EXACTAMENTE
+      // lo persistido (autoridad única = el Data Lake, no el estado local).
+      await cargarPerfilDesdeLake();
+    } else {
+      setToastMessage('Error al guardar: ' + (res.error || 'desconocido'));
+      setShowToast(true);
+    }
+    setIsSaving(false);
     setIsDirty(false);
-    // Success toast or visual feedback
+  };
+
+  const handleDiscard = async () => {
+    if (isSaving) return;
+    // Descartar = volver al estado que dicta el Lake (descarta cambios locales)
+    await cargarPerfilDesdeLake();
+    setIsDirty(false);
+    setToastMessage('Cambios descartados');
+    setShowToast(true);
+  };
+
+  // Handle avatar file selection and upload to Google Drive
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userEmail) return;
+
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      setToastMessage('Solo se permiten archivos de imagen');
+      setShowToast(true);
+      return;
+    }
+
+    // Validar tamaño (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setToastMessage('La imagen no debe exceder 5MB');
+      setShowToast(true);
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      // Leer como base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const result = await uploadAvatar(userEmail, base64, file.name, file.type);
+      if (result.ok && result.fileUrl) {
+        // Actualizar el estado local del avatar
+        if (effectiveRole === 'ALUMNO') {
+          setStudentData(prev => ({ ...prev, avatar: result.fileUrl! }));
+        } else if (effectiveRole === 'DOCENTE') {
+          setTeacherData(prev => ({ ...prev, avatar: result.fileUrl! }));
+        } else {
+          setDirData(prev => ({ ...prev, avatar: result.fileUrl! }));
+        }
+        setIsDirty(true);
+        setToastMessage('Avatar subido a Google Drive');
+        setShowToast(true);
+      } else {
+        setToastMessage('Error al subir: ' + (result.error || 'desconocido'));
+        setShowToast(true);
+      }
+    } catch (err) {
+      console.error('[Avatar Upload]', err);
+      setToastMessage('Error de conexión al subir avatar');
+      setShowToast(true);
+    } finally {
+      setIsUploadingAvatar(false);
+      // Limpiar el input para permitir re-seleccionar el mismo archivo
+      if (avatarFileInputRef.current) avatarFileInputRef.current.value = '';
+    }
   };
 
   const TabButton = ({ id, label, icon: Icon }: any) => (
-    <button 
-      onClick={() => setActiveTab(id)}
+    <button
+      onClick={() => requestTabChange(id)}
       className={`flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2.5 sm:py-4 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all shrink-0 snap-center ${
         activeTab === id ? 'bg-[#38BDF8] text-white shadow-[0_0_20px_#38BDF840]' : 'text-white/40 hover:text-white hover:bg-white/5'
       }`}
@@ -220,7 +518,7 @@ export function UserSettings({
           </div>
           <div className="text-right shrink-0">
              <img src={institutionLogo} className="w-6 h-6 sm:w-8 sm:h-8 ml-auto mb-1 opacity-60" alt="Logo" />
-             <p className="text-white/20 text-[6px] sm:text-[8px] font-black uppercase tracking-widest">ID: {effectiveRole === 'ALUMNO' ? 'STU-2026-001' : effectiveRole === 'DIRECTOR' ? 'DIR-2026-001' : teacherData.employeeId}</p>
+             <p className="text-white/20 text-[6px] sm:text-[8px] font-black uppercase tracking-widest">ID: {effectiveRole === 'ALUMNO' ? (studentData.studentId || 'STU-XXXX') : effectiveRole === 'DIRECTOR' ? 'DIR-2026-001' : teacherData.employeeId}</p>
           </div>
         </div>
 
@@ -232,8 +530,8 @@ export function UserSettings({
                 <span className="text-white text-[7px] sm:text-[10px] font-mono tracking-tighter uppercase whitespace-nowrap">{effectiveRole === 'ALUMNO' ? 'VERIFIED STUDENT' : effectiveRole === 'DIRECTOR' ? 'VERIFIED DIRECTOR' : 'VERIFIED DOCENTE ELITE'}</span>
              </div>
           </div>
-          <div className="w-10 h-10 sm:w-16 sm:h-16 bg-white p-0.5 sm:p-1 rounded-lg sm:rounded-xl shadow-2xl shrink-0">
-             <QrCode size={120} className="w-full h-full text-black" />
+          <div className="w-10 h-10 sm:w-16 sm:h-16 bg-white p-0.5 sm:p-1 rounded-lg sm:rounded-xl shadow-2xl shrink-0 flex items-center justify-center">
+             <QRCodeSVG value={userEmail || 'unknown'} size={56} bgColor="white" fgColor="#061a1a" level="M" />
           </div>
         </div>
       </motion.div>
@@ -318,20 +616,42 @@ export function UserSettings({
                >
                   <GlassCard title="Identidad del Profesional" icon={User} accent="cyan">
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Avatar Upload */}
-                        <div className="md:col-span-2 flex items-center gap-8 p-6 bg-white/5 rounded-3xl border border-white/5">
-                           <div className="w-24 h-24 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center relative group overflow-hidden">
-                              <img src={profile.avatar} className="w-full h-full object-cover" alt="Avatar" />
-                              <button className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                                 <Camera size={20} className="text-white" />
-                              </button>
-                           </div>
-                           <div className="flex-1">
-                              <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">Avatar Profesional</h4>
-                              <p className="text-[9px] text-white/30 font-bold mb-4 uppercase tracking-widest">Se sincroniza con la Digital Card y Chats (Máx. 5MB)</p>
-                              <button className="px-4 py-2 bg-[#38BDF8]/10 border border-[#38BDF8]/20 rounded-xl text-[9px] font-black uppercase tracking-widest text-[#38BDF8] hover:bg-[#38BDF8]/20 transition-all font-bold">Subir Nueva Foto</button>
-                           </div>
-                        </div>
+                         {/* Avatar Upload */}
+                         <div className="md:col-span-2 flex items-center gap-8 p-6 bg-white/5 rounded-3xl border border-white/5">
+                            <input
+                              ref={avatarFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleAvatarUpload}
+                              className="hidden"
+                            />
+                            <div 
+                              className="w-24 h-24 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center relative group overflow-hidden cursor-pointer"
+                              onClick={() => avatarFileInputRef.current?.click()}
+                            >
+                               {isUploadingAvatar ? (
+                                  <div className="w-6 h-6 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin" />
+                               ) : (
+                                  <>
+                                    <img src={profile.avatar} className="w-full h-full object-cover" alt="Avatar" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                                       <Camera size={20} className="text-white" />
+                                    </div>
+                                  </>
+                               )}
+                            </div>
+                            <div className="flex-1">
+                               <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">Avatar Profesional</h4>
+                               <p className="text-[9px] text-white/30 font-bold mb-4 uppercase tracking-widest">Se sincroniza con la Digital Card y Chats (Máx. 5MB)</p>
+                               <button 
+                                 onClick={() => avatarFileInputRef.current?.click()}
+                                 disabled={isUploadingAvatar}
+                                 className="px-4 py-2 bg-[#38BDF8]/10 border border-[#38BDF8]/20 rounded-xl text-[9px] font-black uppercase tracking-widest text-[#38BDF8] hover:bg-[#38BDF8]/20 transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                               >
+                                 {isUploadingAvatar ? 'Subiendo...' : 'Subir Nueva Foto'}
+                               </button>
+                            </div>
+                         </div>
  
                         <div className="space-y-2">
                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Nombre Completo</label>
@@ -342,37 +662,143 @@ export function UserSettings({
                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-black outline-none focus:border-[#38BDF8]/40 transition-all italic"
                            />
                         </div>
-                        <div className="space-y-2">
-                           <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
-                              Email Institucional <Lock size={10} />
-                           </label>
-                           <input 
-                            type="text" 
-                            value={profile.email} 
-                            readOnly
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/20 text-xs font-bold outline-none cursor-not-allowed"
-                           />
-                        </div>
-                        <div className="space-y-2 relative">
-                           <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
-                              CURP <Lock size={10} />
-                           </label>
-                           <input 
-                            type="text" 
-                            value={`XXXX-XXXX-XXXX-${profile.curp.slice(-4)}`} 
-                            readOnly
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/20 text-xs font-bold outline-none cursor-not-allowed"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Teléfono Personal</label>
-                           <input 
-                            type="text" 
-                            value={profile.phone} 
-                            onChange={(e) => { profile.setPhone(e.target.value); setIsDirty(true); }}
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
-                           />
-                        </div>
+                         <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
+                               Email de Cuenta <Lock size={10} />
+                            </label>
+                            <input
+                             type="text"
+                             value={profile.email || ''}
+                             readOnly
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/60 text-xs font-bold outline-none cursor-not-allowed"
+                            />
+                            <p className="text-white/15 text-[7px] ml-1">Identidad del QR. No se puede modificar.</p>
+                         </div>
+                         <div className="space-y-2 relative">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">
+                               CURP
+                            </label>
+                            <input
+                             type="text"
+                             value={profile.curp || ''}
+                             onChange={(e) => { profile.setCurp?.(e.target.value.toUpperCase().slice(0, 18)); setIsDirty(true); }}
+                             placeholder="CLAVE ÚNICA DE 18 CARACTERES"
+                             maxLength={18}
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono uppercase"
+                            />
+                            <p className="text-white/15 text-[7px] ml-1">Tu Clave Única de Registro de Población.</p>
+                         </div>
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Fecha de Nacimiento</label>
+                            <input 
+                             type="date" 
+                             value={profile.birthDate || ''} 
+                             onChange={(e) => { profile.setBirthDate?.(e.target.value); setIsDirty(true); }}
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                            />
+                         </div>
+                         {effectiveRole === 'ALUMNO' && (
+                           <>
+                              <div className="space-y-2">
+                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Student ID</label>
+                                 <input 
+                                  type="text" 
+                                  value={profile.studentId || ''} 
+                                  onChange={(e) => { profile.setStudentId?.(e.target.value); setIsDirty(true); }}
+                                  placeholder="Ej: TEC-2024-001"
+                                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                                 />
+                              </div>
+                              <div className="space-y-2">
+                                 <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Número de Estudiante</label>
+                                <input 
+                                 type="text" 
+                                 value={profile.studentNumber || ''} 
+                                 onChange={(e) => { profile.setStudentNumber?.(e.target.value); setIsDirty(true); }}
+                                 placeholder="STU-XXXX-XXX"
+                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                                />
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Carrera</label>
+                                <select
+                                 value={profile.career || ''}
+                                 onChange={(e) => { profile.setCareer?.(e.target.value); setIsDirty(true); }}
+                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer"
+                                >
+                                 <option value="" className="bg-[#0b0f19]">Selecciona carrera…</option>
+                                 {CARRERAS.map(c => (
+                                   <option key={c} value={c} className="bg-[#0b0f19]">{c}</option>
+                                 ))}
+                                </select>
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Turno</label>
+                                <select
+                                 value={profile.shift || ''}
+                                 onChange={(e) => { profile.setShift?.(e.target.value); setIsDirty(true); }}
+                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer"
+                                >
+                                 <option value="" className="bg-[#0b0f19]">Selecciona turno…</option>
+                                 {TURNOS.map(t => (
+                                   <option key={t} value={t} className="bg-[#0b0f19]">{t}</option>
+                                 ))}
+                                </select>
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Semestre</label>
+                                <select
+                                 value={profile.semestre || ''}
+                                 onChange={(e) => { profile.setSemestre?.(e.target.value); setIsDirty(true); }}
+                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer"
+                                >
+                                 <option value="" className="bg-[#0b0f19]">Selecciona semestre…</option>
+                                 {SEMESTRES.map(s => (
+                                   <option key={s} value={s} className="bg-[#0b0f19]">Semestre {s}</option>
+                                 ))}
+                                </select>
+                             </div>
+                             <div className="space-y-2">
+                                <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Módulo TEC</label>
+                                <select
+                                 value={profile.moduloTec || ''}
+                                 onChange={(e) => {
+                                   profile.setModuloTec?.(e.target.value);
+                                   // nivel_ingles y USUARIOS.nivel los sincroniza el backend
+                                   // a partir de modulo_tec (ver CONFIG.MODULO_A_NIVEL en Code.gs).
+                                   setIsDirty(true);
+                                 }}
+                                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer"
+                                >
+                                 <option value="" className="bg-[#0b0f19]">Selecciona módulo…</option>
+                                 {MODULOS_TEC.map(m => (
+                                   <option key={m.value} value={m.value} className="bg-[#0b0f19]">{m.label}</option>
+                                 ))}
+                                </select>
+                             </div>
+                            </>
+                          )}
+                         {effectiveRole === 'DOCENTE' && (
+                           <div className="space-y-2">
+                              <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Grado Académico</label>
+                              <input 
+                               type="text" 
+                               value={profile.degree || ''} 
+                               onChange={(e) => { profile.setDegree?.(e.target.value); setIsDirty(true); }}
+                               placeholder="Mtro. / Dr. / Mtra. en..."
+                               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-[#DEFF9A] text-xs font-black outline-none focus:border-[#38BDF8]/40 transition-all uppercase"
+                              />
+                           </div>
+                         )}
+                         <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Teléfono Personal</label>
+                            <input 
+                             type="text" 
+                             value={profile.phone || ''} 
+                             onChange={(e) => { profile.setPhone(e.target.value); setIsDirty(true); }}
+                             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
+                            />
+                         </div>
                         <div className="md:col-span-2 space-y-2">
                            <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Abstract Académico / Bio</label>
                            <textarea 
@@ -643,39 +1069,120 @@ export function UserSettings({
           </AnimatePresence>
        </div>
 
-       {/* Floating Save Bar */}
+       {/* Save Panel — lateral colapsable. NO bloquea los campos del formulario. */}
        <AnimatePresence>
           {isDirty && (
-            <motion.div 
-              initial={{ y: 100 }}
-              animate={{ y: 0 }}
-              exit={{ y: 100 }}
-              className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[100] w-full max-w-2xl px-8"
+            <motion.div
+              initial={{ x: 100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 100, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+              className="fixed right-3 sm:right-6 bottom-3 sm:bottom-6 z-[100] flex items-end gap-2"
             >
-               <div className="bg-[#38BDF8] rounded-[2rem] p-4 flex items-center justify-between shadow-[0_20px_50px_rgba(56,189,248,0.3)]">
-                  <div className="flex items-center gap-4 px-4 text-white">
-                     <Save size={20} />
-                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest">Cambios detectados</p>
-                        <p className="text-[8px] font-bold opacity-80">Guarda para aplicar en tu perfil universitario</p>
-                     </div>
+              {/* Botón colapsable (label) */}
+              {isSavePanelCollapsed ? (
+                <button
+                  onClick={() => setIsSavePanelCollapsed(false)}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#38BDF8] text-white shadow-[0_10px_30px_rgba(56,189,248,0.4)] flex items-center justify-center animate-pulse hover:scale-110 transition-transform"
+                  title="Tienes cambios sin guardar"
+                  aria-label="Expandir panel de cambios"
+                >
+                  <Save size={18} className="sm:size-5" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-[#061a1a]" />
+                </button>
+              ) : (
+                <div className="bg-[#38BDF8] rounded-2xl sm:rounded-[2rem] p-3 sm:p-4 flex items-center gap-2 sm:gap-3 shadow-[0_20px_50px_rgba(56,189,248,0.3)] max-w-[calc(100vw-1.5rem)]">
+                  <div className="flex items-center gap-2 sm:gap-3 text-white shrink-0">
+                    <Save size={16} className="sm:size-5" />
+                    <div className="hidden sm:block">
+                      <p className="text-[10px] font-black uppercase tracking-widest">Cambios detectados</p>
+                      <p className="text-[8px] font-bold opacity-80">Guarda para aplicar en tu perfil universitario</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                     <button 
-                       onClick={() => setIsDirty(false)}
-                       className="px-6 py-3 rounded-2xl bg-white/20 text-white text-[10px] font-black uppercase tracking-widest hover:bg-white/30 transition-all font-bold"
-                     >
-                        Descartar
-                     </button>
-                     <button 
-                       onClick={handleSave}
-                       className="px-8 py-3 rounded-2xl bg-white text-[#38BDF8] text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl font-bold"
-                     >
-                        Confirmar
-                     </button>
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                    <button
+                      onClick={() => setIsSavePanelCollapsed(true)}
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/10 text-white/80 hover:bg-white/20 transition-all flex items-center justify-center"
+                      title="Ocultar panel"
+                      aria-label="Ocultar panel de cambios"
+                    >
+                      <X size={14} className="sm:size-4" />
+                    </button>
+                    <button
+                      onClick={handleDiscard}
+                      disabled={isSaving}
+                      className="px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-white/20 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-white/30 transition-all font-bold disabled:opacity-60 disabled:cursor-wait"
+                    >
+                      Descartar
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg sm:rounded-xl bg-white text-[#38BDF8] text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl font-bold disabled:opacity-60 disabled:cursor-wait disabled:hover:scale-100"
+                    >
+                      {isSaving ? 'Guardando…' : 'Confirmar'}
+                    </button>
                   </div>
-               </div>
+                </div>
+              )}
             </motion.div>
+          )}
+       </AnimatePresence>
+
+       {/* Modal de aviso: cambios sin guardar al cambiar de tab */}
+       <AnimatePresence>
+          {showUnsavedModal && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowUnsavedModal(false)}
+                className="absolute inset-0 bg-[#020b18]/85 backdrop-blur-md"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative z-10 w-full max-w-md bg-[#0b0f19] border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]"
+              >
+                <div className="flex items-start gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <AlertTriangle size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-white text-base font-black uppercase tracking-tight">Cambios sin guardar</h3>
+                    <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mt-1 leading-relaxed">
+                      Tienes cambios sin guardar. ¿Qué quieres hacer antes de cambiar de sección?
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:gap-3">
+                  <button
+                    onClick={handleSaveAndSwitch}
+                    disabled={isSaving}
+                    className="w-full py-3 sm:py-4 rounded-xl bg-[#DEFF9A] text-[#061a1a] text-[10px] font-black uppercase tracking-widest shadow-[0_0_25px_rgba(222,255,154,0.3)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    <Save size={14} /> {isSaving ? 'Guardando…' : 'Guardar y cambiar'}
+                  </button>
+                  <button
+                    onClick={handleDiscardAndSwitch}
+                    disabled={isSaving}
+                    className="w-full py-3 sm:py-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    Descartar cambios y cambiar
+                  </button>
+                  <button
+                    onClick={() => { setShowUnsavedModal(false); setPendingTab(null); }}
+                    disabled={isSaving}
+                    className="w-full py-3 sm:py-4 rounded-xl bg-white/5 text-white/60 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-60"
+                  >
+                    Quedarme aquí
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
        </AnimatePresence>
 

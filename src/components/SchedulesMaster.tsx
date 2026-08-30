@@ -138,7 +138,6 @@ export function SchedulesMaster() {
                             <motion.div
                               key={slot.id}
                               drag
-                              dragSnapToGrid
                               dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }} // Simplified for visual 'feel'
                               className={`absolute inset-1 rounded-xl p-3 z-20 cursor-grab active:cursor-grabbing transition-all ${
                                 hasConflict 

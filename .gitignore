@@ -12,3 +12,6 @@ coverage/
 api/dist/
 api/grammarLibraryData.ts
 api/minimal.ts
+Google_docs/
+teclingo_repomix-output.txt
+repomix-output.xml

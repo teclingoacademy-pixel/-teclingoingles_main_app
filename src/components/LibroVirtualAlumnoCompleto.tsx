@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, 
   CheckCircle, 
+  Lock,
   Video, 
   ArrowLeft, 
   ArrowRight,

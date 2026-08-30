@@ -18,7 +18,7 @@ interface Event {
   visibility: ('GLOBAL' | 'DOCENTE' | 'ALUMNO')[];
 }
 
-export type UserRole = 'DIRECTOR' | 'DOCENTE' | 'ALUMNO' | 'TUTOR';
+export type UserRole = 'DIRECTOR' | 'DOCENTE' | 'ALUMNO' | 'TUTOR' | 'ADMIN';
 
 export interface SyllabusUnit {
   number: number;
@@ -75,6 +75,8 @@ export interface Group {
   schedule: any;
   time: string;
   days: string[];
+  room?: string;
+  type?: string;
   status: 'ACTIVE' | 'INACTIVE';
 }
 
@@ -132,6 +134,10 @@ interface AppContextType {
   setTheme: (theme: Theme) => void;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  userEmail: string;
+  setUserEmail: (email: string) => void;
+  userName: string;
+  setUserName: (name: string) => void;
   userProgress: number;
   setUserProgress: (progress: number) => void;
   globalEvents: Event[];
@@ -139,9 +145,9 @@ interface AppContextType {
   updateGlobalEvent: (event: Event) => void;
   deleteGlobalEvent: (id: string) => void;
   careers: Career[];
-  setCareers: (careers: Career[]) => void;
+  setCareers: React.Dispatch<React.SetStateAction<Career[]>>;
   subjects: Subject[];
-  setSubjects: (subjects: Subject[]) => void;
+  setSubjects: React.Dispatch<React.SetStateAction<Subject[]>>;
   teachers: Teacher[];
   updateTeacher: (teacher: Teacher) => void;
   groups: Group[];
@@ -170,6 +176,8 @@ interface AppContextType {
   setMaintenanceMode: (mode: boolean) => void;
   currentRole: UserRole;
   setCurrentRole: (role: UserRole) => void;
+  isDemoMode: boolean;
+  setIsDemoMode: (isDemo: boolean) => void;
   isExtracurricularUnlocked: boolean;
   setIsExtracurricularUnlocked: (isUnlocked: boolean) => void;
   managementEnabled: boolean;
@@ -261,6 +269,14 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<UserRole>(() => (localStorage.getItem('tecnolingo_session') as UserRole) || 'DIRECTOR');
+  // Modo DEMO: solo en demo se muestra el MasterSwitcher (simulador de roles).
+  // Un usuario real (con email registrado en el Lake) lo oculta para evitar
+  // que cambie de rol después de elegir su perfil en el registro.
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    const session = localStorage.getItem('tecnolingo_session');
+    const email = localStorage.getItem('teclingo_user_email');
+    return Boolean(session) && !email;
+  });
   const [isExtracurricularUnlocked, setIsExtracurricularUnlocked] = useState(() => localStorage.getItem('extracurricular_unlocked') === 'true');
 
   const [managementEnabled, setManagementEnabledImpl] = useState<boolean>(() => {
@@ -468,12 +484,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [institutionName, setInstitutionName] = useState('TECNOLINGO AI');
   const [institutionLogo, setInstitutionLogo] = useState('https://raw.githubusercontent.com/lucide-react/lucide/main/icons/zap.svg');
+  const [userEmail, setUserEmail] = useState(() => localStorage.getItem('teclingo_user_email') || '');
+  const [userName, setUserName] = useState(() => localStorage.getItem('teclingo_user_name') || '');
   const [quickChatUser, setQuickChatUser] = useState<any | null>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('tecnolingo_session', currentRole);
   }, [currentRole]);
+
+  useEffect(() => {
+    localStorage.setItem('teclingo_user_email', userEmail);
+  }, [userEmail]);
+
+  useEffect(() => {
+    localStorage.setItem('teclingo_user_name', userName);
+  }, [userName]);
 
   useEffect(() => {
     localStorage.setItem('extracurricular_unlocked', String(isExtracurricularUnlocked));
@@ -563,6 +589,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTheme, 
       setLanguage, 
       t, 
+      userEmail,
+      setUserEmail,
+      userName,
+      setUserName,
       userProgress, 
       setUserProgress, 
       globalEvents, 
@@ -601,6 +631,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setMaintenanceMode,
       currentRole,
       setCurrentRole,
+      isDemoMode,
+      setIsDemoMode,
       isExtracurricularUnlocked,
       setIsExtracurricularUnlocked,
       managementEnabled,

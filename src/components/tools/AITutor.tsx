@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { apiUrl } from '../../services/apiConfig';
 import { 
   MessageSquare, 
   ChevronLeft, 
@@ -91,7 +92,7 @@ export function AITutor({ onClose }: { onClose: () => void }) {
         parts: [{ text: msg.content }]
       }));
 
-      const response = await fetch('/api/tutor', {
+      const response = await fetch(apiUrl('/api/tutor'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: messageToSend, history })

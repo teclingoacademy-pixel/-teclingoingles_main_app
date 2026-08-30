@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { apiUrl } from '../../services/apiConfig';
 import {
   Edit3,
   ChevronLeft,
@@ -130,7 +131,7 @@ export function GrammarFixer({ onClose }: { onClose: () => void }) {
     if (!text.trim()) return;
     setIsAnalyzing(true);
     try {
-      const response = await fetch("/api/grammar/analyze", {
+      const response = await fetch(apiUrl("/api/grammar/analyze"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, expertMode: isExpertMode }),
@@ -159,7 +160,7 @@ export function GrammarFixer({ onClose }: { onClose: () => void }) {
     setIsAnalyzing(true);
 
     try {
-      const response = await fetch("/api/grammar/verify", {
+      const response = await fetch(apiUrl("/api/grammar/verify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

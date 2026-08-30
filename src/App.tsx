@@ -12,17 +12,38 @@ import { UserRole } from './components/MasterSwitcher';
 import { motion, AnimatePresence } from 'motion/react';
 import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
+import { consultarIdentidadEnLake } from './services/identityService';
 import { ShieldAlert, Zap, AlertTriangle } from 'lucide-react';
 
 export default function App() {
-  const { maintenanceMode, currentRole, setCurrentRole } = useAppContext();
+  const { maintenanceMode, currentRole, setCurrentRole, setIsDemoMode } = useAppContext();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     // Check local storage for last session
     const lastSession = localStorage.getItem('tecnolingo_session');
+
     if (lastSession) {
-      setIsAuthenticated(true);
+      const savedEmail = localStorage.getItem('teclingo_user_email');
+      if (savedEmail) {
+        // Sesión real: verifica contra el Lake que la identidad SIGA existiendo.
+        // Así, una sesión fantasma (pruebas previas, cuentas borradas) obliga a
+        // pasar por AuthPortal/registro en lugar de caer directo al dashboard.
+        consultarIdentidadEnLake(savedEmail).then((estado) => {
+          if (estado === 'existe') {
+            setIsAuthenticated(true);
+          } else if (estado === 'no_existe') {
+            localStorage.removeItem('tecnolingo_session');
+            setIsAuthenticated(false);
+          } else {
+            // Lake inalcanzable: no bloquear al usuario, conserva la sesión local
+            setIsAuthenticated(true);
+          }
+        });
+      } else {
+        // Modo demo: no hay identidad real guardada, se conserva la sesión
+        setIsAuthenticated(true);
+      }
     }
 
     // Define global logout function
@@ -32,9 +53,10 @@ export default function App() {
     };
   }, []);
 
-  const handleLogin = (role: UserRole) => {
+  const handleLogin = (role: UserRole, isDemo: boolean = false) => {
     localStorage.setItem('tecnolingo_session', role);
     setCurrentRole(role);
+    setIsDemoMode(isDemo);
     setIsAuthenticated(true);
   };
 

@@ -99,7 +99,8 @@ export function ExtracurricularModal({ onClose }: ExtracurricularModalProps) {
           title: '📢 Hito Alcanzado: Nuevo Pioneer TECLINGO',
           type: 'TECLINGO',
           description: '¡Alumno_01 ha desbloqueado el acceso de élite y portará la Insignia Pioneer!',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          visibility: ['GLOBAL']
         });
       } else {
         setError('Clave inválida. Solicítala a tu Director si ya superaste el 80% de tu curso.');

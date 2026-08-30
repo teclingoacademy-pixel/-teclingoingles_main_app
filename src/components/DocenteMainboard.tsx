@@ -708,7 +708,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                           <div className="p-5 md:p-6 rounded-2xl md:rounded-3xl bg-[#F59E0B]/5 border border-[#F59E0B]/20 relative overflow-hidden group hover:bg-[#F59E0B]/10 transition-all cursor-pointer">
                             <div className="flex items-center gap-4 md:gap-6 mb-4">
                                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-[#F59E0B] shadow-[0_0_20px_#F59E0B40] flex items-center justify-center text-[#061a1a] shrink-0">
-                                  <AlertTriangle size={20} md:size={24} />
+                                  <AlertTriangle size={20} className="md:w-6 md:h-6" />
                                 </div>
                                 <div>
                                   <h4 className="text-white text-md md:text-lg font-black tracking-tight uppercase truncate">Circular Pendiente</h4>

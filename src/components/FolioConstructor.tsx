@@ -24,6 +24,7 @@ import { useAppContext } from '../context/AppContext';
 interface FolioData {
   id: string;
   recipientIds: string[];
+  recipient: string;
   date: string;
   title: string;
   subject: string;
@@ -36,6 +37,7 @@ export function FolioConstructor() {
   const [data, setData] = useState<FolioData>({
     id: `TEC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     recipientIds: ['USR-901-B33'],
+    recipient: 'Dirección General',
     date: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
     title: 'CIRCULAR INSTITUCIONAL 042',
     subject: 'Protocolo de Evaluación Segundo Parcial',
@@ -68,6 +70,7 @@ export function FolioConstructor() {
         setData({
           id: `TEC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
           recipientIds: ['USR-901-B33'],
+          recipient: '',
           date: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
           title: 'CIRCULAR INSTITUCIONAL 042',
           subject: '',

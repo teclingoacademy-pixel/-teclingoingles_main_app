@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { apiUrl } from '../../services/apiConfig';
 import { 
   Waves, 
   ChevronLeft, 
@@ -189,7 +190,7 @@ export function TheBridge({ onClose }: { onClose: () => void }) {
     setIsPlaying(true);
 
     try {
-      const res = await fetch('/api/tts', {
+      const res = await fetch(apiUrl('/api/tts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

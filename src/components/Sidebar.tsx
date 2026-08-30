@@ -18,7 +18,8 @@ import {
   Sun,
   Monitor,
   Languages,
-  Menu
+  Menu,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
@@ -66,9 +67,11 @@ export function Sidebar({
     setTheme,
     language,
     setLanguage,
+    t,
     userProgress,
     institutionName,
-    institutionLogo
+    institutionLogo,
+    isDemoMode
   } = useAppContext();
 
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
@@ -409,10 +412,14 @@ export function Sidebar({
                  </button>
               </div>
 
+              {/* MasterSwitcher (simulador de roles) — SOLO en Modo Demo.
+                    Un usuario real registrado NO debe cambiar de rol. */}
+              {isDemoMode && (
               <div className="mb-4">
                 <p className="text-white/20 text-[8px] font-black uppercase tracking-[0.2em] mb-3">Protocolo Central</p>
                 <MasterSwitcher currentRole={currentRole} onRoleChange={onRoleChange} />
               </div>
+              )}
 
               <div className="p-4 rounded-3xl bg-white/5 border border-white/10 flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-full ${userColor} flex items-center justify-center text-[#061a1a] font-black shrink-0 shadow-glow`}>
@@ -423,6 +430,18 @@ export function Sidebar({
                   <p className="text-[8px] font-bold text-white/30 uppercase mt-1 truncate">{userSub}</p>
                 </div>
               </div>
+
+              <button
+                onClick={() => {
+                  if (window.innerWidth < 1024) closeMobile();
+                  (window as any).tecnolingoLogout?.();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-red-500/5 border border-red-500/10 text-red-400/70 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 transition-all group"
+                title={t('logout')}
+              >
+                <LogOut size={16} className="shrink-0 opacity-70 group-hover:opacity-100" />
+                <span className="text-[10px] font-black uppercase tracking-widest">{t('logout')}</span>
+              </button>
             </>
           )}
 
@@ -436,7 +455,14 @@ export function Sidebar({
                </button>
                <div className={`w-8 h-8 rounded-full ${userColor} flex items-center justify-center text-[#061a1a] font-black shadow-glow`}>
                   {userInitials}
-                </div>
+               </div>
+               <button
+                 onClick={() => (window as any).tecnolingoLogout?.()}
+                 className="p-3 rounded-2xl bg-red-500/5 border border-red-500/10 text-red-400/70 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/30 transition-all"
+                 title={t('logout')}
+               >
+                  <LogOut size={16} />
+               </button>
             </div>
           )}
         </div>

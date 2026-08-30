@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { apiUrl } from '../services/apiConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, 
@@ -302,7 +303,7 @@ export function SafeZoneModule() {
     setSpeakingMessageId(messageId);
 
     try {
-      const res = await fetch('/api/tts', {
+      const res = await fetch(apiUrl('/api/tts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, gender: voiceGender }),
@@ -410,7 +411,7 @@ export function SafeZoneModule() {
 
       const currentSpeed = parseFloat(velocity);
 
-      const res = await fetch('/api/tutor', {
+      const res = await fetch(apiUrl('/api/tutor'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
