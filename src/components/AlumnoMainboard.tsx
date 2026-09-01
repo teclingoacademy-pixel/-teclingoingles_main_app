@@ -48,6 +48,7 @@ import { StudentTasks } from './StudentTasks';
 import { StudentGrades } from './StudentGrades';
 import { StudentFolios } from './StudentFolios';
 import { MessagingModule } from './MessagingModule';
+import { QuickChat } from './QuickChat';
 import { ProgressMap } from './ProgressMap';
 import { ADNTest } from './tools/ADNTest';
 import { ExtracurricularHub } from './ExtracurricularHub';
@@ -86,6 +87,11 @@ interface AlumnoMainboardProps {
   const [isADNDone, setIsADNDone] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [studentProfileData, setStudentProfileData] = useState<Record<string, unknown>>({});
+
+  const handleNavigateToFullChat = (userId: string) => {
+    setPreselectedChatId(userId);
+    setCurrentView('mensajes');
+  };
   const attendancePercentage = 98;
   const attendanceStreak = 12;
 
@@ -478,6 +484,9 @@ interface AlumnoMainboardProps {
           />
         )}
       </AnimatePresence>
+
+      {/* QuickChat flotante */}
+      <QuickChat onNavigateToFullChat={handleNavigateToFullChat} />
 
       {/* Modal de Onboarding — Perfil incompleto */}
       <ProfileOnboardingModal
