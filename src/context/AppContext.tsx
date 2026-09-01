@@ -158,6 +158,7 @@ interface AppContextType {
   chats: ChatThread[];
   addMessage: (chatId: string, message: Message) => void;
   createGroupChat: (groupId: string, name: string, participants: string[]) => void;
+  cargarMensajesChat: (chatId: string) => Promise<void>;
   folios: Folio[];
   addFolio: (folio: Folio) => void;
   signFolio: (folioId: string, signature: FolioSignature) => void;
@@ -403,37 +404,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       status: 'ACTIVE'
     }
   ]);
-  const [chats, setChats] = useState<ChatThread[]>([
-    {
-      id: 'CHAT-GLOBAL',
-      name: 'Difusión Institucional',
-      type: 'GLOBAL',
-      participants: [],
-      messages: [
-        { id: '1', senderId: 'DIR-001', senderName: 'Dirección', senderRole: 'DIRECTOR', content: 'Bienvenidos al ciclo 2026-A.', timestamp: '10:00 AM', isDirector: true }
-      ],
-      unreadCount: 0
-    },
-    {
-      id: 'TEA-2026-042',
-      name: 'Mtra. Ana López (Docente Elite)',
-      type: 'DIRECT',
-      participants: ['TEA-2026-042', 'STU-2026-001'],
-      messages: [
-        { id: 'm1', senderId: 'TEA-2026-042', senderName: 'Mtra. Ana López', senderRole: 'DOCENTE', content: 'Hello Student! I am your assigned Elite Coach for Subject Pronouns and Fluency development. Let me know if you would like some live support!', timestamp: '09:12 AM' }
-      ],
-      lastMessage: 'Hello Student! I am your assigned Elite Coach...',
-      unreadCount: 0
-    },
-    {
-      id: 'GRP-001',
-      name: 'Pioneers A1 - Morning (Grupo)',
-      type: 'GROUP',
-      participants: ['USR-901-B33', 'USR-001-A22', 'USR-221-C99'],
-      messages: [],
-      unreadCount: 0
-    }
-  ]);
+  const [chats, setChats] = useState<ChatThread[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [folios, setFolios] = useState<Folio[]>([
     {
@@ -527,29 +498,80 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userEmail) return;
     let cancelled = false;
-    obtenerChats(userEmail).then(remoteChats => {
-      if (cancelled || !remoteChats || remoteChats.length === 0) return;
-      setChats(prev => {
-        const merged = [...prev];
-        remoteChats.forEach((rc: any) => {
-          const exists = merged.find(c => c.id === rc.id);
-          if (!exists) {
-            merged.push({
-              id: rc.id,
-              name: rc.name,
-              type: rc.type,
-              participants: rc.participants || [],
-              messages: [],
-              lastMessage: rc.last_message || '',
-              unreadCount: 0
-            });
-          }
+
+    const cargarChats = async () => {
+      try {
+        const remoteChats = await obtenerChats(userEmail);
+        if (cancelled || !remoteChats || remoteChats.length === 0) return;
+
+        setChats(prev => {
+          const merged = [...prev];
+          remoteChats.forEach((rc: any) => {
+            const exists = merged.find(c => c.id === rc.id);
+            if (!exists) {
+              merged.push({
+                id: rc.id,
+                name: rc.name,
+                type: rc.type,
+                participants: rc.participants || [],
+                messages: [],
+                lastMessage: rc.last_message || '',
+                unreadCount: 0
+              });
+            }
+          });
+          return merged;
         });
-        return merged;
-      });
-    }).catch(() => {});
-    return () => { cancelled = true; };
+      } catch {}
+    };
+
+    cargarChats();
+
+    // Polling: refrescar chats cada 15 segundos
+    const interval = setInterval(cargarChats, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [userEmail]);
+
+  // Cargar mensajes de un chat específico desde el Data Lake
+  const cargarMensajesChat = async (chatId: string) => {
+    if (!userEmail) return;
+    try {
+      const remoteMsgs = await obtenerMensajes(chatId, 100);
+      if (!remoteMsgs || remoteMsgs.length === 0) return;
+
+      setChats(prev => prev.map(chat => {
+        if (chat.id !== chatId) return chat;
+        const existingIds = new Set(chat.messages.map(m => m.id));
+        const newMsgs = remoteMsgs
+          .filter((m: any) => !existingIds.has(m.id))
+          .map((m: any) => ({
+            id: m.id,
+            senderId: m.sender_id,
+            senderName: m.sender_name,
+            senderRole: m.sender_role,
+            content: m.content,
+            timestamp: m.timestamp,
+            isDirector: m.is_director === 'TRUE' || m.is_director === true
+          }));
+        if (newMsgs.length === 0) return chat;
+        return {
+          ...chat,
+          messages: [...chat.messages, ...newMsgs],
+          lastMessage: newMsgs[newMsgs.length - 1].content
+        };
+      }));
+    } catch {}
+  };
+
+  // Auto-cargar mensajes cuando se selecciona un chat
+  useEffect(() => {
+    if (!userEmail || chats.length === 0) return;
+    chats.forEach(chat => {
+      if (chat.messages.length === 0) {
+        cargarMensajesChat(chat.id);
+      }
+    });
+  }, [chats.length, userEmail]);
 
   const t = (key: string) => {
     return translations[language][key as keyof typeof translations['en']] || key;
@@ -655,6 +677,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       chats,
       addMessage,
       createGroupChat,
+      cargarMensajesChat,
       folios,
       addFolio,
       signFolio,

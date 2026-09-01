@@ -40,8 +40,8 @@ export function StudentGroup() {
         setGrupo(miGrupo);
 
         const miembros = await identityService.obtenerMiembrosDeGrupo(email, miGrupo.grupo_id);
-        constcompanerosFiltrados = miembros.filter(m => m.email !== email);
-        setCompaneros(compañerosFiltrados.map(m => ({
+        const companerosFiltrados = miembros.filter(m => m.email !== email);
+        setCompaneros(companerosFiltrados.map(m => ({
           ...m,
           nivel: miGrupo.nivel,
         })));

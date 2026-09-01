@@ -48,7 +48,7 @@ export const chatToUser = (chat: ChatThread): User => ({
 });
 
 export function MessagingModule({ initialChatId, initialPrefilledText }: { initialChatId?: string; initialPrefilledText?: string }) {
-  const { currentRole, chats, addMessage, setQuickChatUser } = useAppContext();
+  const { currentRole, chats, addMessage, setQuickChatUser, cargarMensajesChat } = useAppContext();
   const [selectedChatId, setSelectedChatId] = useState<string>(chats[0]?.id || '');
   const [search, setSearch] = useState('');
   const [inputText, setInputText] = useState('');
@@ -70,6 +70,22 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
     }
   }, [initialChatId, initialPrefilledText]);
 
+  // Cargar mensajes al seleccionar un chat
+  useEffect(() => {
+    if (selectedChatId) {
+      cargarMensajesChat(selectedChatId);
+    }
+  }, [selectedChatId, cargarMensajesChat]);
+
+  // Polling: refrescar mensajes del chat seleccionado cada 10 segundos
+  useEffect(() => {
+    if (!selectedChatId) return;
+    const interval = setInterval(() => {
+      cargarMensajesChat(selectedChatId);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [selectedChatId, cargarMensajesChat]);
+
   const filteredChats = useMemo(() => {
     return chats.filter(chat => {
       const matchesSearch = chat.name.toLowerCase().includes(search.toLowerCase());
@@ -88,10 +104,13 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
   const handleSendMessage = () => {
     if (!inputText || !selectedChat) return;
 
+    const senderName = currentRole === 'DIRECTOR' ? 'Dirección' :
+                       currentRole === 'DOCENTE' ? 'Docente' : 'Alumno';
+
     const newMessage: AppMessage = {
       id: Date.now().toString(),
-      senderId: 'ME', // Should be the actual user ID
-      senderName: currentRole === 'DIRECTOR' ? 'Dirección' : 'Usuario',
+      senderId: 'ME',
+      senderName,
       senderRole: currentRole,
       content: inputText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
