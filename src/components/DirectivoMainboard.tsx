@@ -33,7 +33,11 @@ import {
   Activity,
   CheckSquare,
   Terminal,
-  UserCheck
+  UserCheck,
+  Copy,
+  Check,
+  KeyRound,
+  Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
@@ -53,6 +57,7 @@ import { FolioMonitor } from './FolioMonitor';
 import { AcademicCatalog } from './AcademicCatalog';
 import { GroupManager } from './GroupManager';
 import { DirectorLibrary } from './DirectorLibrary';
+import { GruposInglesDirector } from './GruposInglesDirector';
 import { RealTimeMonitorPanel } from './RealTimeMonitorPanel';
 import { LibroVirtualDirectorCompleto } from './LibroVirtualDirectorCompleto';
 import { AccessControlModule } from './AccessControlModule';
@@ -92,6 +97,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
   const [targetChatId, setTargetChatId] = useState<string | null>(null);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [directorProfileData, setDirectorProfileData] = useState<Record<string, unknown>>({});
+  const [institutionCode, setInstitutionCode] = useState<string>('');
 
   // Cargar perfil del director para verificar si está completo
   useEffect(() => {
@@ -105,6 +111,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
             institutionName: perfil.institution_name || '',
           };
           setDirectorProfileData(profileFields);
+          setInstitutionCode((perfil.institution_code as string) || '');
           if (!isProfileComplete('DIRECTOR', profileFields)) {
             setTimeout(() => setShowOnboardingModal(true), 800);
           }
@@ -115,6 +122,31 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     };
     loadProfile();
   }, [userEmail]);
+
+  // Copiar código al portapapeles
+  const [codeCopied, setCodeCopied] = useState(false);
+  const copyInstitutionCode = async () => {
+    if (!institutionCode) return;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(institutionCode);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = institutionCode;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2200);
+    } catch (err) {
+      console.error('[Copy Institution Code]', err);
+    }
+  };
 
   const handleNavigateToFullChat = (userId: string) => {
     setTargetChatId(userId);
@@ -142,6 +174,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     { id: 'settings', label: 'Settings', icon: SettingsIcon, category: 'Soporte & Global' },
 
     { id: 'groups', label: 'Grados y Grupos', icon: Users, badge: 'DEMANDA', category: 'Académico', isPrincipal: true },
+    { id: 'grupos-ingles', label: 'Grupos Inglés (CLE)', icon: Languages, category: 'Académico' },
     { id: 'biblioteca', label: 'Biblioteca Directiva', icon: Library, category: 'Académico' },
     { id: 'teachers', label: 'Plantilla Docente', icon: UserCheck, category: 'Académico' },
     { id: 'bi', label: 'Academic BI', icon: BarChart3, badge: 'REAL-TIME', category: 'Académico' },
@@ -244,9 +277,59 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
                           <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Sistemas IA Online</span>
                        </div>
                     </div>
-                  </header>
+</header>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                   {/* CARD: CÓDIGO INSTITUCIONAL — visible solo para DIRECTOR */}
+                   {institutionCode && (
+                     <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#DEFF9A]/10 via-[#DEFF9A]/5 to-transparent border border-[#DEFF9A]/30 relative overflow-hidden">
+                        <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#DEFF9A]/10 blur-[60px] rounded-full" />
+                        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6">
+                           <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-[#DEFF9A]/15 flex items-center justify-center text-[#DEFF9A] shrink-0">
+                              <Hash size={28} />
+                           </div>
+                           <div className="flex-1 min-w-0">
+                              <p className="text-[#DEFF9A] text-[8px] sm:text-[10px] font-black uppercase tracking-widest mb-1">
+                                 🔒 Código Institucional
+                              </p>
+                              <p className="text-white/40 text-[8px] sm:text-[10px] font-bold uppercase tracking-widest mb-2 sm:mb-3">
+                                 Compártelo con tus alumnos y docentes para que se vinculen a tu institución
+                              </p>
+                              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                                 <div className="flex-1 min-w-0 bg-black/40 border border-[#DEFF9A]/20 rounded-xl sm:rounded-2xl py-2.5 sm:py-3 px-3 sm:px-5 overflow-hidden">
+                                    <code className="text-[#DEFF9A] text-base sm:text-2xl font-black uppercase tracking-[0.15em] sm:tracking-[0.25em] whitespace-nowrap select-all cursor-default block overflow-x-auto">
+                                       {institutionCode}
+                                    </code>
+                                 </div>
+                                 <button
+                                    onClick={copyInstitutionCode}
+                                    className={`flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl border transition-all font-black uppercase text-[10px] sm:text-xs tracking-widest whitespace-nowrap ${
+                                       codeCopied
+                                          ? 'bg-[#DEFF9A]/30 border-[#DEFF9A]/40 text-[#DEFF9A]'
+                                          : 'bg-[#DEFF9A]/10 border-[#DEFF9A]/30 text-[#DEFF9A] hover:bg-[#DEFF9A]/20 hover:scale-105 cursor-pointer'
+                                    }`}
+                                    title="Copiar al portapapeles"
+                                 >
+                                    {codeCopied ? (
+                                       <>
+                                          <Check size={14} />
+                                          <span className="hidden sm:inline">Copiado</span>
+                                          <span className="sm:hidden">OK</span>
+                                       </>
+                                    ) : (
+                                       <>
+                                          <Copy size={14} />
+                                          <span className="hidden sm:inline">Copiar</span>
+                                          <span className="sm:hidden">📋</span>
+                                       </>
+                                    )}
+                                 </button>
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                   )}
+
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                      {quickStats.map((stat, i) => (
                        <div key={i}>
                          <GlassCard className="!p-8">
@@ -290,6 +373,8 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
                     setSelectedGroupId(id);
                   }} 
                 />
+              ) : currentView === 'grupos-ingles' ? (
+                <GruposInglesDirector />
               ) : currentView === 'operations' ? (
                 <OperationalCommand />
               ) : currentView === 'users' ? (

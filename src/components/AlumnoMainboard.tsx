@@ -42,6 +42,7 @@ import { FoliosDocente } from './FoliosDocente';
 import { AchievementWall } from './AchievementWall';
 import { AISkillsSupport } from './AISkillsSupport';
 import { StudentGroup } from './StudentGroup';
+import { UnirseGrupoCard } from './UnirseGrupoCard';
 import { PDPModule } from './PDPModule';
 import { StudentTasks } from './StudentTasks';
 import { StudentGrades } from './StudentGrades';
@@ -122,6 +123,7 @@ interface AlumnoMainboardProps {
     { id: 'settings', label: t('settings'), icon: SettingsIcon, category: 'Soporte & Global' },
 
     { id: 'grupo', label: t('my_group'), icon: Users, category: 'Académico', isPrincipal: true },
+    { id: 'unirse-grupo', label: 'Unirse a Grupo (CLE)', icon: Languages, category: 'Académico' },
     { id: 'tareas', label: t('tasks'), icon: ClipboardList, category: 'Académico' },
     { id: 'notas', label: t('grades'), icon: BarChart3, category: 'Académico' },
     { id: 'calendario', label: t('calendar'), icon: CalendarIcon, category: 'Académico' },
@@ -415,6 +417,8 @@ interface AlumnoMainboardProps {
                 <PDPModule />
               ) : currentView === 'grupo' ? (
                 <StudentGroup />
+              ) : currentView === 'unirse-grupo' ? (
+                <UnirseGrupoCard />
               ) : currentView === 'ai-support' ? (
                 <AISkillsSupport />
               ) : currentView === 'tareas' ? (

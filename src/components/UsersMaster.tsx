@@ -71,6 +71,7 @@ export interface AttendanceRecord {
 export interface User {
   id: string;
   controlNumber: string;
+  id_empleado?: string;
   curp: string;
   name: string;
   email: string;
@@ -299,6 +300,17 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                       <Copy size={12} />
                     </button>
                   </div>
+                  {user.role === 'DOCENTE' && user.id_empleado && (
+                    <>
+                      <span className="opacity-50">•</span>
+                      <div className="flex items-center gap-2">
+                        <span className="opacity-50 font-mono text-[#DEFF9A]">{user.id_empleado}</span>
+                        <button onClick={() => copyToClipboard(user.id_empleado)} className="hover:text-[#DEFF9A] transition-colors">
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                   <span className="opacity-50">•</span>
                   <span className={user.status === 'ACTIVE' ? 'text-[#DEFF9A]' : 'text-red-500'}>{user.status}</span>
                 </div>
@@ -475,6 +487,17 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                 <div className="space-y-4">
                   <h4 className="text-[#DEFF9A] text-[10px] font-black uppercase tracking-[0.4em]">Perfil Institucional</h4>
                   <div className="grid grid-cols-2 gap-4">
+                    {user.role === 'DOCENTE' && user.id_empleado && (
+                      <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1 relative group">
+                        <span className="text-white/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
+                          <Key size={10} /> ID Empleado
+                        </span>
+                        <p className="text-[#DEFF9A] text-xs font-bold font-mono tracking-tighter">{user.id_empleado}</p>
+                        <button onClick={() => copyToClipboard(user.id_empleado)} className="absolute top-4 right-4 text-white/10 hover:text-[#DEFF9A] transition-colors">
+                          <Copy size={10} />
+                        </button>
+                      </div>
+                    )}
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-1 relative group">
                       <span className="text-white/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
                         <Key size={10} /> No. Control (Fijo)
@@ -828,6 +851,7 @@ export function UsersMaster() {
       const mapped: User[] = data.map((u) => ({
         id: u.id,
         controlNumber: u.controlNumber,
+        id_empleado: u.id_empleado || '',
         curp: u.curp,
         name: u.nombre,
         email: u.email,

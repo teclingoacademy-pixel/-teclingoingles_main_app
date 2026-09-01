@@ -24,7 +24,7 @@ interface ProfileOnboardingModalProps {
 /**
  * Determina si el perfil está completo según el rol.
  * Campos obligatorios para ALUMNO: name, studentId, career, shift, semestre, moduloTec
- * Campos obligatorios para DOCENTE: name, employeeId, degree
+ * Campos obligatorios para DOCENTE: name, curp, degree
  * Campos obligatorios para DIRECTOR: name, institutionName
  */
 function isProfileComplete(role: string, data: Record<string, unknown>): boolean {
@@ -41,7 +41,7 @@ function isProfileComplete(role: string, data: Record<string, unknown>): boolean
   if (role === 'DOCENTE') {
     return Boolean(
       data.name && String(data.name).trim() &&
-      data.employeeId && String(data.employeeId).trim() &&
+      data.curp && String(data.curp).trim() &&
       data.degree && String(data.degree).trim()
     );
   }
@@ -68,7 +68,7 @@ function getMissingFields(role: string, data: Record<string, unknown>): string[]
     if (!data.moduloTec || !String(data.moduloTec).trim()) missing.push('Módulo TEC');
   } else if (role === 'DOCENTE') {
     if (!data.name || !String(data.name).trim()) missing.push('Nombre completo');
-    if (!data.employeeId || !String(data.employeeId).trim()) missing.push('ID Empleado');
+    if (!data.curp || !String(data.curp).trim()) missing.push('CURP');
     if (!data.degree || !String(data.degree).trim()) missing.push('Grado académico');
   } else if (role === 'DIRECTOR') {
     if (!data.name || !String(data.name).trim()) missing.push('Nombre completo');

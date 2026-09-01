@@ -58,6 +58,7 @@ import { StudentAcademicActivity } from './StudentAcademicActivity';
 import { QRScannerModule } from './QRScannerModule';
 import { useAppContext } from '../context/AppContext';
 import { SafeZoneTeacherAnalytics } from './SafeZoneTeacherAnalytics';
+import { GruposInglesDocente } from './GruposInglesDocente';
 import { TeacherGrades } from './TeacherGrades';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
@@ -258,7 +259,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
         if (perfil) {
           const profileFields = {
             name: perfil.nombre || '',
-            employeeId: perfil.student_id || '',
+            curp: perfil.curp || '',
             degree: perfil.degree || '',
           };
           setTeacherProfileData(profileFields);
@@ -319,6 +320,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
     { id: 'settings', label: 'Configuración', icon: SettingsIcon, category: 'Soporte & Global' },
 
     { id: 'grupos', label: 'Mis Grupos', icon: Users, category: 'Académico', isPrincipal: true },
+    { id: 'grupos-ingles', label: 'Grupos Inglés (CLE)', icon: Languages, category: 'Académico' },
     { id: 'calificaciones', label: 'Calificaciones', icon: ClipboardList, badge: 'PRO', category: 'Académico' },
     { id: 'planeacion', label: 'Planeación', icon: BookOpen, category: 'Académico' },
     { id: 'libro-maestro', label: 'Libro Virtual Maestro', icon: BookOpen, badge: 'MÁSTER', category: 'Académico' },
@@ -760,6 +762,8 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                 <StudentAcademicActivity role="DOCENTE" />
               ) : currentView === 'grupos' ? (
                 <GroupManagement onTakeAttendance={(group) => setSelectedGroupForAttendance(group)} />
+              ) : currentView === 'grupos-ingles' ? (
+                <GruposInglesDocente />
               ) : currentView === 'calificaciones' ? (
                 <TeacherGrades />
               ) : currentView === 'asistencias' ? (

@@ -10,7 +10,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycbzJA5dkIj9IBlUbYewD-pIwA-RwScgAkk9DGBRI79R1n--FIZib_He6gKPum37X-WHK/exec';
+  'https://script.google.com/macros/s/AKfycbyKlGQK4uy7ZVa4J04cLFuGsYlrkzBy2lGH4gggPrgLo1C6N8J2vVtWL13Iu-bQN0jl/exec';
 
 const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
@@ -512,6 +512,7 @@ export interface UsuarioComunidad {
   phone: string;
   curp: string;
   controlNumber: string;
+  id_empleado: string;
   location: string;
   nivel: string;
   joinDate: string;
@@ -648,6 +649,221 @@ export async function obtenerConfigAcademica(
   }
 }
 
+// ============================================================
+// GRUPOS DE INGLÉS (CLE)
+// ============================================================
+
+export interface GrupoIngles {
+  grupo_id: string;
+  code_id: string;
+  nombre: string;
+  grupo: string;
+  nivel: string;
+  carrera: string;
+  turno: string;
+  docente_id: string;
+  docente_email: string;
+  horario: string;
+  dias: string;
+  capacidad: number;
+  alumnos_inscritos: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MiembroGrupo {
+  asignacion_id: string;
+  grupo_id: string;
+  user_id: string;
+  email: string;
+  nombre: string;
+  rol_en_grupo: string;
+  fecha_asignacion: string;
+  asignado_por: string;
+  activo: string;
+}
+
+export async function crearGrupoIngles(
+  email: string,
+  data: { nombre: string; grupo?: string; nivel: string; carrera?: string; turno?: string; horario?: string; dias?: string; capacidad?: number }
+): Promise<IdentidadResultado & { grupo_id?: string; code_id?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'crearGrupoIngles',
+      email: email.toLowerCase().trim(),
+      ...data
+    }, 15000);
+    if (res?.ok) {
+      return { ok: true, grupo_id: (res as any).grupo_id, code_id: (res as any).code_id };
+    }
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function listarGruposIngles(email: string): Promise<GrupoIngles[]> {
+  try {
+    const res = await postAlLake({
+      action: 'listarGruposIngles',
+      email: email.toLowerCase().trim()
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).grupos)) {
+      return (res as any).grupos as GrupoIngles[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function asignarDocenteAGrupo(
+  email: string, grupoId: string, docenteEmail: string
+): Promise<IdentidadResultado> {
+  try {
+    const res = await postAlLake({
+      action: 'asignarDocenteAGrupo',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId,
+      docente_email: docenteEmail.toLowerCase().trim()
+    }, 15000);
+    if (res?.ok) return { ok: true };
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function unirseAGrupo(
+  email: string, codeId: string
+): Promise<IdentidadResultado & { grupo_id?: string; nombre?: string; mensaje?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'unirseAGrupo',
+      email: email.toLowerCase().trim(),
+      code_id: codeId.trim()
+    }, 15000);
+    if (res?.ok) {
+      return { ok: true, grupo_id: (res as any).grupo_id, nombre: (res as any).nombre };
+    }
+    return { ok: false, error: (res as any).error, mensaje: (res as any).mensaje };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function obtenerMiembrosDeGrupo(
+  email: string, grupoId: string
+): Promise<MiembroGrupo[]> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerMiembrosDeGrupo',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).miembros)) {
+      return (res as any).miembros as MiembroGrupo[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function eliminarGrupoIngles(
+  email: string, grupoId: string
+): Promise<IdentidadResultado> {
+  try {
+    const res = await postAlLake({
+      action: 'eliminarGrupoIngles',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId
+    }, 15000);
+    if (res?.ok) return { ok: true };
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function misGruposIngles(email: string): Promise<GrupoIngles[]> {
+  try {
+    const res = await postAlLake({
+      action: 'misGruposIngles',
+      email: email.toLowerCase().trim()
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).grupos)) {
+      return (res as any).grupos as GrupoIngles[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+// ============================================================
+// ASISTENCIAS
+// ============================================================
+
+export interface RegistroAsistencia {
+  user_id: string;
+  email: string;
+  nombre: string;
+  estado: 'PRESENTE' | 'AUSENTE' | 'RETRASO' | 'JUSTIFICADO';
+}
+
+export interface RegistroAsistenciaBackend {
+  id: string;
+  grupo_id: string;
+  user_id: string;
+  email: string;
+  nombre: string;
+  fecha: string;
+  estado: string;
+  docente_email: string;
+  created_at: string;
+}
+
+export async function registrarAsistencia(
+  email: string, grupoId: string, registros: RegistroAsistencia[], fecha?: string
+): Promise<IdentidadResultado & { registrados?: number }> {
+  try {
+    const res = await postAlLake({
+      action: 'registrarAsistencia',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId,
+      registros,
+      fecha: fecha || new Date().toISOString().slice(0, 10)
+    }, 15000);
+    if (res?.ok) {
+      return { ok: true, registrados: (res as any).registrados };
+    }
+    return { ok: false, error: (res as any).error };
+  } catch {
+    return { ok: false, error: 'lake_unreachable' };
+  }
+}
+
+export async function obtenerAsistenciaGrupo(
+  email: string, grupoId: string, fecha?: string
+): Promise<RegistroAsistenciaBackend[]> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerAsistenciaGrupo',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId,
+      fecha: fecha || new Date().toISOString().slice(0, 10)
+    }, 15000);
+    if (res?.ok && Array.isArray((res as any).asistencias)) {
+      return (res as any).asistencias as RegistroAsistenciaBackend[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 const identityService = {
   verificarEmail,
   consultarIdentidadEnLake,
@@ -678,5 +894,14 @@ const identityService = {
   crearGrupo,
   eliminarGrupo,
   obtenerConfigAcademica,
+  crearGrupoIngles,
+  listarGruposIngles,
+  asignarDocenteAGrupo,
+  unirseAGrupo,
+  obtenerMiembrosDeGrupo,
+  eliminarGrupoIngles,
+  misGruposIngles,
+  registrarAsistencia,
+  obtenerAsistenciaGrupo,
 };
 export default identityService;
