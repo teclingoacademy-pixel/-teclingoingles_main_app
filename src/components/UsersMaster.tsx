@@ -25,6 +25,7 @@ import {
   TrendingUp,
   BrainCircuit,
   Copy,
+  Check,
   Star,
   Lock,
   Map,
@@ -231,6 +232,7 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
     qualifiedSubjects: user.qualifiedSubjects || []
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const adnData = user.adnResults ? [
     { subject: 'Speaking', A: user.adnResults.speaking },
@@ -241,6 +243,8 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
+    setCopiedId(text);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
@@ -635,15 +639,114 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                     </div>
                   </div>
                 ) : (
-                  <div className="h-full flex flex-col justify-center items-center p-12 text-center space-y-6">
-                    <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-white/10">
-                      <ShieldCheck size={40} />
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="text-white text-lg font-black uppercase tracking-tight">Acceso Concedido</h4>
-                      <p className="text-white/20 text-xs font-medium max-w-xs leading-relaxed">
-                        Este usuario cuenta con privilegios {user.role === 'ADMIN' ? 'administrativos totales' : 'operativos verificados'}. No requiere perfil genético.
-                      </p>
+                  <div className="flex justify-center items-center p-8">
+                    <div className="w-full max-w-sm">
+                      {/* ID CARD INSTITUCIONAL */}
+                      <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-br from-[#0a0f1a] to-[#111827] shadow-2xl">
+                        {/* Header bar */}
+                        <div className="bg-[#DEFF9A] px-6 py-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-[#061a1a] flex items-center justify-center">
+                              <GraduationCap size={16} className="text-[#DEFF9A]" />
+                            </div>
+                            <div>
+                              <p className="text-[#061a1a] text-[10px] font-black uppercase tracking-widest leading-none">TECLINGO</p>
+                              <p className="text-[#061a1a]/60 text-[7px] font-bold uppercase tracking-widest">Instituto de Inglés</p>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest ${
+                            user.status === 'ACTIVE'
+                              ? 'bg-green-500/20 text-green-800'
+                              : 'bg-red-500/20 text-red-800'
+                          }`}>
+                            {user.status === 'ACTIVE' ? 'ACTIVO' : 'INACTIVO'}
+                          </span>
+                        </div>
+
+                        {/* Photo + Info */}
+                        <div className="p-6 flex flex-col items-center text-center space-y-4">
+                          {/* Avatar */}
+                          <div className="relative">
+                            {user.photo ? (
+                              <img
+                                src={user.photo}
+                                alt={user.name}
+                                className="w-24 h-24 rounded-2xl object-cover border-2 border-white/10"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            ) : null}
+                            <div className={`w-24 h-24 rounded-2xl bg-gradient-to-br from-[#DEFF9A]/20 to-[#DEFF9A]/5 flex items-center justify-center text-[#DEFF9A] text-2xl font-black border border-[#DEFF9A]/20 ${user.photo ? 'absolute inset-0 -z-10' : ''}`}>
+                              {user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                            </div>
+                            <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-[#0a0f1a] flex items-center justify-center text-[7px] font-black ${
+                              user.status === 'ACTIVE' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                            }`}>
+                              {user.status === 'ACTIVE' ? '✓' : '✕'}
+                            </div>
+                          </div>
+
+                          {/* Name + Role */}
+                          <div>
+                            <h3 className="text-white text-lg font-black uppercase tracking-tight italic">{user.name}</h3>
+                            <div className="flex items-center justify-center gap-2 mt-1">
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                                user.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-400' :
+                                user.role === 'DOCENTE' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
+                                user.role === 'DIRECTOR' ? 'bg-amber-500/20 text-amber-400' :
+                                'bg-[#38BDF8]/20 text-[#38BDF8]'
+                              }`}>
+                                {user.role}
+                              </span>
+                              {user.id_empleado && (
+                                <span className="text-[#DEFF9A] text-[9px] font-mono font-bold tracking-wider">{user.id_empleado}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* ID Fields */}
+                          <div className="w-full space-y-2">
+                            <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                              <span className="text-white/30 text-[8px] font-black uppercase tracking-widest">ID Sistema</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-white/60 text-[9px] font-mono tracking-tighter">{user.id}</span>
+                                <button onClick={() => copyToClipboard(user.id)} className="text-white/20 hover:text-[#DEFF9A] transition-colors">
+                                  {copiedId === user.id ? <Check size={10} /> : <Copy size={10} />}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                              <span className="text-white/30 text-[8px] font-black uppercase tracking-widest">CURP</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-white/60 text-[9px] font-mono tracking-tighter">{user.curp || '—'}</span>
+                                {user.curp && (
+                                  <button onClick={() => copyToClipboard(user.curp)} className="text-white/20 hover:text-[#DEFF9A] transition-colors">
+                                    {copiedId === user.curp ? <Check size={10} /> : <Copy size={10} />}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                              <span className="text-white/30 text-[8px] font-black uppercase tracking-widest">No. Control</span>
+                              <span className="text-white/60 text-[9px] font-mono tracking-tighter">{user.controlNumber || '—'}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                              <span className="text-white/30 text-[8px] font-black uppercase tracking-widest">Email</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-white/60 text-[9px] font-mono tracking-tighter truncate max-w-[180px]">{user.email}</span>
+                                <button onClick={() => copyToClipboard(user.email)} className="text-white/20 hover:text-[#DEFF9A] transition-colors">
+                                  {copiedId === user.email ? <Check size={10} /> : <Copy size={10} />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-3 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+                          <span className="text-white/15 text-[7px] font-bold uppercase tracking-widest">Registro: {user.joinDate || '—'}</span>
+                          <span className="text-white/15 text-[7px] font-bold uppercase tracking-widest">TECLINGO IDENTITY™</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
