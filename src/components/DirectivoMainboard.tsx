@@ -52,6 +52,7 @@ import { AcademicAudit } from './AcademicAudit';
 import { UserSettings } from './UserSettings';
 import { MessagingModule } from './MessagingModule';
 import { QuickChat } from './QuickChat';
+import { MessageNotificationBell } from './MessageNotificationBell';
 import { FolioConstructor } from './FolioConstructor';
 import { FolioMonitor } from './FolioMonitor';
 import { AcademicCatalog } from './AcademicCatalog';
@@ -153,6 +154,11 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     setCurrentView('mensajes');
   };
 
+  const handleBellNavigateToChat = (chatId: string) => {
+    setTargetChatId(chatId);
+    setCurrentView('mensajes');
+  };
+
   const isViewDisabled = (view: string) => {
     const academicViewsList = ['biblioteca', 'teachers', 'groups', 'gestor-horarios', 'bi'];
     const managementViewsList = ['operations', 'users', 'audit', 'folios', 'alerts', 'mensajes'];
@@ -205,7 +211,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
 
   return (
     <div className="h-screen bg-gradient-to-tr from-[#010a0a] via-[#041a1a] to-[#010808] text-white lg:grid lg:grid-cols-[auto_1fr] overflow-hidden relative">
-      <Sidebar 
+      <Sidebar
         items={filteredSidebarItems}
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -214,6 +220,12 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
         userName="Dir. Hub TECLINGO"
         userSub="Nivel Ejecutivo"
         userInitials="DH"
+        onNavigateToChat={handleBellNavigateToChat}
+      />
+
+      <MessageNotificationBell
+        onNavigateToChat={handleBellNavigateToChat}
+        accentColor="#DEFF9A"
       />
 
       {/* Main Content */}

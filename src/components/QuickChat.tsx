@@ -56,19 +56,28 @@ export function QuickChat({ onNavigateToFullChat }: { onNavigateToFullChat: (use
       setMessages([
         { id: 'welcome', text: `Hola, soy ${userName || 'yo'}. ¿En qué puedo apoyarte?`, sender: 'me', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
       ]);
+
+      // Registrar chat en Data Lake si no existe (idempotente — backend hace upsert)
+      identityService.registrarChat(
+        userEmail,
+        directChatId,
+        quickChatUser.name || quickChatUser.email,
+        'DIRECT',
+        [userEmail, quickChatUser.email]
+      ).catch(() => {});
     }
   }, [quickChatUser, userEmail, userName, chats]);
 
   // Auto-navegar al chat completo después de 3 mensajes
   useEffect(() => {
-    if (messageCount >= 3 && quickChatUser) {
+    if (messageCount >= 3 && quickChatUser && chatId) {
       const timer = setTimeout(() => {
-        onNavigateToFullChat(quickChatUser.id);
+        onNavigateToFullChat(chatId);
         setQuickChatUser(null);
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [messageCount, quickChatUser, onNavigateToFullChat, setQuickChatUser]);
+  }, [messageCount, quickChatUser, chatId, onNavigateToFullChat, setQuickChatUser]);
 
   if (!quickChatUser) return null;
 

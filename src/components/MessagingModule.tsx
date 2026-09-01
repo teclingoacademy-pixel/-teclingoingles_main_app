@@ -48,7 +48,7 @@ export const chatToUser = (chat: ChatThread): User => ({
 });
 
 export function MessagingModule({ initialChatId, initialPrefilledText }: { initialChatId?: string; initialPrefilledText?: string }) {
-  const { currentRole, chats, addMessage, setQuickChatUser, cargarMensajesChat } = useAppContext();
+  const { currentRole, chats, addMessage, setQuickChatUser, cargarMensajesChat, userEmail, userName, createGroupChat, markChatAsRead } = useAppContext();
   const [selectedChatId, setSelectedChatId] = useState<string>(chats[0]?.id || '');
   const [search, setSearch] = useState('');
   const [inputText, setInputText] = useState('');
@@ -64,18 +64,61 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
     if (initialChatId) {
       setSelectedChatId(initialChatId);
       setMobileView('chat');
+
+      // Si el chat no existe localmente, crearlo a partir del chatId DIRECT-...
+      const exists = chats.find(c => c.id === initialChatId);
+      if (!exists && userEmail) {
+        const isDirect = initialChatId.startsWith('DIRECT-');
+        const chatName = isDirect
+          ? (() => {
+              const parts = initialChatId.replace('DIRECT-', '').split('_');
+              const other = parts.find(p => p.toLowerCase() !== userEmail.toLowerCase()) || parts[0];
+              return other;
+            })()
+          : initialChatId;
+        const participants = isDirect
+          ? initialChatId.replace('DIRECT-', '').split('_')
+          : [userEmail];
+        createGroupChat(initialChatId, chatName, participants);
+      }
     }
     if (initialPrefilledText) {
       setInputText(initialPrefilledText);
     }
-  }, [initialChatId, initialPrefilledText]);
+  }, [initialChatId, initialPrefilledText, userEmail, createGroupChat]);
+
+  // Garantizar que el chat seleccionado exista localmente (también cuando el usuario
+  // hace click en un item de la lista cuyo chat_id no se haya cargado aún del backend)
+  useEffect(() => {
+    if (!selectedChatId || !userEmail) return;
+    const exists = chats.find(c => c.id === selectedChatId);
+    if (exists) return;
+
+    const isDirect = selectedChatId.startsWith('DIRECT-');
+    if (!isDirect) return; // Solo auto-creamos chats DIRECT-* (los GROUP los crea el director)
+
+    const chatName = (() => {
+      const parts = selectedChatId.replace('DIRECT-', '').split('_');
+      const other = parts.find(p => p.toLowerCase() !== userEmail.toLowerCase()) || parts[0];
+      return other;
+    })();
+    const participants = selectedChatId.replace('DIRECT-', '').split('_');
+    createGroupChat(selectedChatId, chatName, participants);
+  }, [selectedChatId, chats, userEmail, createGroupChat]);
+
+  // Marcar como leído cuando se selecciona un chat
+  useEffect(() => {
+    if (selectedChatId) {
+      markChatAsRead(selectedChatId);
+    }
+  }, [selectedChatId]);
 
   // Cargar mensajes al seleccionar un chat
   useEffect(() => {
     if (selectedChatId) {
       cargarMensajesChat(selectedChatId);
     }
-  }, [selectedChatId, cargarMensajesChat]);
+  }, [selectedChatId]);
 
   // Polling: refrescar mensajes del chat seleccionado cada 10 segundos
   useEffect(() => {
@@ -84,7 +127,7 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
       cargarMensajesChat(selectedChatId);
     }, 10000);
     return () => clearInterval(interval);
-  }, [selectedChatId, cargarMensajesChat]);
+  }, [selectedChatId]);
 
   const filteredChats = useMemo(() => {
     return chats.filter(chat => {
@@ -99,26 +142,34 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
     });
   }, [chats, currentRole, search]);
 
-  const selectedChat = chats.find(c => c.id === selectedChatId) || filteredChats[0];
+  const selectedChat = useMemo(
+    () => chats.find(c => c.id === selectedChatId) || filteredChats[0],
+    [chats, selectedChatId, filteredChats]
+  );
 
   const handleSendMessage = () => {
-    if (!inputText || !selectedChat) return;
+    if (!inputText.trim() || !selectedChat) return;
 
-    const senderName = currentRole === 'DIRECTOR' ? 'Dirección' :
-                       currentRole === 'DOCENTE' ? 'Docente' : 'Alumno';
+    const senderName = userName || (
+      currentRole === 'DIRECTOR' ? 'Dirección' :
+      currentRole === 'DOCENTE' ? 'Docente' : 'Alumno'
+    );
 
     const newMessage: AppMessage = {
       id: Date.now().toString(),
       senderId: 'ME',
       senderName,
       senderRole: currentRole,
-      content: inputText,
+      content: inputText.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isDirector: currentRole === 'DIRECTOR'
     };
 
     addMessage(selectedChat.id, newMessage);
     setInputText('');
+
+    // Resetear badge de no leídos para este chat (ya lo estamos viendo)
+    markChatAsRead(selectedChat.id);
   };
 
   const handleBroadcast = () => {
@@ -215,12 +266,37 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
 
                  <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                       <h4 className="text-white text-[13px] font-black uppercase tracking-tight truncate">{chat.name}</h4>
+                       <h4 className="text-white text-[13px] font-black uppercase tracking-tight truncate">
+                         {(() => {
+                           if (chat.type !== 'DIRECT') return chat.name;
+                           const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                           const resolved = otherEmail && chat.participantNames?.[otherEmail];
+                           return resolved || chat.name;
+                         })()}
+                       </h4>
                        <span className="text-white/20 text-[8px] font-black">
                           {chat.messages[chat.messages.length - 1]?.timestamp || '...'}
                        </span>
                     </div>
                     <div className="flex items-center gap-2 mb-1">
+                      {chat.type === 'DIRECT' ? (() => {
+                        const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                        const role = otherEmail && chat.participantRoles?.[otherEmail];
+                        const roleColors: Record<string, string> = {
+                          DIRECTOR: 'bg-amber-500/20 text-amber-400',
+                          DOCENTE: 'bg-purple-500/20 text-purple-400',
+                          ALUMNO: 'bg-cyan-500/20 text-cyan-400'
+                        };
+                        return role ? (
+                          <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${roleColors[role] || 'bg-blue-500/20 text-blue-400'}`}>
+                            {role}
+                          </span>
+                        ) : (
+                          <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                            DIRECT
+                          </span>
+                        );
+                      })() : (
                       <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
                         chat.type === 'GLOBAL' ? 'bg-orange-500/20 text-orange-400' :
                         chat.type === 'GROUP' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
@@ -228,6 +304,7 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
                       }`}>
                         {chat.type} CHANNEL
                       </span>
+                      )}
                     </div>
                     <p className={`text-[10px] truncate font-medium ${chat.unreadCount > 0 ? 'text-[#DEFF9A] font-black' : 'text-white/20'}`}>
                        {chat.lastMessage || 'Inicia la conversación...'}
@@ -266,20 +343,44 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#0a0c10] bg-[#4ADE80] shadow-[0_0_15px_#4ADE80]" />
                    </div>
-                   <div>
-                      <button 
-                        className="group flex items-center gap-3 text-left"
-                        onClick={() => setShowDossier(true)}
-                      >
-                        <h3 className="text-xl font-black text-white uppercase tracking-tighter group-hover:text-[#DEFF9A] transition-colors">
-                          {selectedChat.name}
-                        </h3>
-                        <Eye size={16} className="text-white/20 group-hover:text-[#DEFF9A] transition-all" />
-                      </button>
-                      <div className="flex items-center gap-3 mt-1">
-                         <span className="text-[8px] font-black text-[#DEFF9A] uppercase tracking-widest bg-[#DEFF9A]/10 px-2.5 py-1 rounded-lg border border-[#DEFF9A]/20">
-                            CANAL {selectedChat.type}
-                         </span>
+                    <div>
+                       <button 
+                         className="group flex items-center gap-3 text-left"
+                         onClick={() => setShowDossier(true)}
+                       >
+                         <h3 className="text-xl font-black text-white uppercase tracking-tighter group-hover:text-[#DEFF9A] transition-colors">
+                           {(() => {
+                             if (selectedChat.type !== 'DIRECT') return selectedChat.name;
+                             const otherEmail = selectedChat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                             const resolved = otherEmail && selectedChat.participantNames?.[otherEmail];
+                             return resolved || selectedChat.name;
+                           })()}
+                         </h3>
+                         <Eye size={16} className="text-white/20 group-hover:text-[#DEFF9A] transition-all" />
+                       </button>
+                       <div className="flex items-center gap-3 mt-1">
+                         {selectedChat.type === 'DIRECT' ? (() => {
+                           const otherEmail = selectedChat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                           const role = otherEmail && selectedChat.participantRoles?.[otherEmail];
+                           const roleColors: Record<string, string> = {
+                             DIRECTOR: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+                             DOCENTE: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+                             ALUMNO: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
+                           };
+                           return role ? (
+                             <span className={`text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${roleColors[role] || 'text-blue-400 bg-blue-500/10 border-blue-500/20'}`}>
+                               {role}
+                             </span>
+                           ) : (
+                             <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">
+                               DIRECT
+                             </span>
+                           );
+                         })() : (
+                          <span className="text-[8px] font-black text-[#DEFF9A] uppercase tracking-widest bg-[#DEFF9A]/10 px-2.5 py-1 rounded-lg border border-[#DEFF9A]/20">
+                             CANAL {selectedChat.type}
+                          </span>
+                         )}
                          <span className="text-white/30 text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5">
                             <div className="w-1 h-1 rounded-full bg-[#4ADE80] animate-pulse" />
                             Activo ahora

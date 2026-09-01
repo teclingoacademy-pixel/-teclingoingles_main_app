@@ -49,6 +49,7 @@ import { StudentGrades } from './StudentGrades';
 import { StudentFolios } from './StudentFolios';
 import { MessagingModule } from './MessagingModule';
 import { QuickChat } from './QuickChat';
+import { MessageNotificationBell } from './MessageNotificationBell';
 import { ProgressMap } from './ProgressMap';
 import { ADNTest } from './tools/ADNTest';
 import { ExtracurricularHub } from './ExtracurricularHub';
@@ -90,6 +91,11 @@ interface AlumnoMainboardProps {
 
   const handleNavigateToFullChat = (userId: string) => {
     setPreselectedChatId(userId);
+    setCurrentView('mensajes');
+  };
+
+  const handleBellNavigateToChat = (chatId: string) => {
+    setPreselectedChatId(chatId);
     setCurrentView('mensajes');
   };
   const attendancePercentage = 98;
@@ -165,7 +171,7 @@ interface AlumnoMainboardProps {
 
   return (
     <div className="h-screen bg-gradient-to-br from-[#020b18] via-[#051c3a] to-[#010812] text-white lg:grid lg:grid-cols-[auto_1fr] overflow-hidden relative">
-      <Sidebar 
+      <Sidebar
         items={sidebarItems}
         currentView={currentView}
         onViewChange={(view) => {
@@ -181,6 +187,12 @@ interface AlumnoMainboardProps {
         userSub="Nivel A1 • Dallas"
         userInitials="AL"
         userColor="bg-[#22D3EE]"
+        onNavigateToChat={handleBellNavigateToChat}
+      />
+
+      <MessageNotificationBell
+        onNavigateToChat={handleBellNavigateToChat}
+        accentColor="#22D3EE"
       />
 
       {/* Main Content */}

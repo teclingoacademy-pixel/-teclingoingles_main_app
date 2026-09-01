@@ -16,7 +16,7 @@ interface Classmate extends MiembroGrupo {
 }
 
 export function StudentGroup() {
-  const { userEmail } = useAppContext();
+  const { userEmail, setQuickChatUser } = useAppContext();
   const email = userEmail || '';
 
   const [grupo, setGrupo] = useState<GrupoIngles | null>(null);
@@ -72,6 +72,16 @@ export function StudentGroup() {
     );
   }
 
+  const handleMensajeDocente = () => {
+    if (!grupo?.docente_email) return;
+    setQuickChatUser({
+      id: grupo.docente_email,
+      email: grupo.docente_email,
+      name: docenteNombre || grupo.docente_email,
+      rol: 'DOCENTE',
+    });
+  };
+
   if (sinGrupo || !grupo) {
     return (
       <div className="space-y-12">
@@ -116,14 +126,23 @@ export function StudentGroup() {
       {/* DOCENTE ENCARGADO */}
       {docenteNombre && (
         <div className="p-5 rounded-2xl bg-[#DEFF9A]/5 border border-[#DEFF9A]/20 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#DEFF9A]/10 flex items-center justify-center text-[#DEFF9A]">
+          <div className="w-12 h-12 rounded-xl bg-[#DEFF9A]/10 flex items-center justify-center text-[#DEFF9A] shrink-0">
             <GraduationCap size={24} />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-[8px] font-black uppercase tracking-widest text-[#DEFF9A]/60">Docente Encargado</p>
-            <p className="text-white text-sm font-black uppercase tracking-tight">{docenteNombre}</p>
-            <p className="text-white/30 text-[9px] font-mono">{grupo.docente_email}</p>
+            <p className="text-white text-sm font-black uppercase tracking-tight truncate">{docenteNombre}</p>
+            <p className="text-white/30 text-[9px] font-mono truncate">{grupo.docente_email}</p>
           </div>
+          <button
+            onClick={handleMensajeDocente}
+            disabled={!grupo.docente_email}
+            title="Enviar mensaje al docente"
+            className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#DEFF9A] text-[#061a1a] text-[10px] font-black uppercase tracking-widest hover:scale-105 hover:shadow-[0_0_20px_rgba(222,255,154,0.4)] active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <MessageCircle size={14} />
+            <span className="hidden sm:inline">Mensaje</span>
+          </button>
         </div>
       )}
 
@@ -177,7 +196,16 @@ export function StudentGroup() {
                     </span>
                   </div>
                 </div>
-                <button className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/20 hover:bg-[#DEFF9A] hover:text-[#061a1a] transition-all">
+                <button
+                  onClick={() => setQuickChatUser({
+                    id: c.email,
+                    email: c.email,
+                    name: c.nombre,
+                    rol: 'ALUMNO',
+                  })}
+                  title={`Enviar mensaje a ${c.nombre}`}
+                  className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/20 hover:bg-[#DEFF9A] hover:text-[#061a1a] transition-all"
+                >
                   <MessageCircle size={16} />
                 </button>
               </motion.div>

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -45,18 +45,20 @@ interface SidebarProps {
   userSub: string;
   userInitials: string;
   userColor?: string;
+  onNavigateToChat: (chatId: string) => void;
 }
 
-export function Sidebar({ 
-  items, 
-  currentView, 
-  onViewChange, 
-  currentRole, 
+export function Sidebar({
+  items,
+  currentView,
+  onViewChange,
+  currentRole,
   onRoleChange,
   userName,
   userSub,
   userInitials,
-  userColor = 'bg-[#DEFF9A]'
+  userColor = 'bg-[#DEFF9A]',
+  onNavigateToChat
 }: SidebarProps) {
   const { 
     isSidebarOpen, 
@@ -165,7 +167,7 @@ export function Sidebar({
           x: isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 0 : -300,
           width: (typeof window !== 'undefined' && window.innerWidth >= 1024) ? (isSidebarCollapsed ? 96 : 288) : 288
         }}
-        className={`fixed lg:relative left-0 top-0 h-full backdrop-blur-[40px] z-[90] flex flex-col overflow-hidden transition-all duration-300 transform border-r border-white/5 touch-pan-y overscroll-contain ${
+        className={`fixed lg:relative left-0 top-0 h-full backdrop-blur-[40px] z-[90] flex flex-col overflow-x-hidden transition-all duration-300 transform border-r border-white/5 touch-pan-y overscroll-contain ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${isSidebarCollapsed ? 'lg:w-24' : 'lg:w-72'}`}
         style={{ backgroundColor: 'var(--bg-main)' }}
@@ -173,14 +175,15 @@ export function Sidebar({
         <div className={`p-8 border-b border-white/5 mb-4 relative neo-glass !border-opacity-0 lg:!border-opacity-10 lg:rounded-[3rem] ${isSidebarCollapsed ? 'px-4' : 'px-8'}`} style={{ borderColor: 'var(--border-subtle)' }}>
           <div className={`flex items-center gap-3 mb-2 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
             <div className={`w-10 h-10 ${userColor} rounded-xl flex items-center justify-center neon-border-glow shadow-[0_0_20px_rgba(222,255,154,0.3)] shrink-0`}>
-              {currentRole === 'DIRECTOR' ? <Shield className="text-[#061a1a]" size={20} fill="currentColor" /> : 
+              {currentRole === 'DIRECTOR' ? <Shield className="text-[#061a1a]" size={20} fill="currentColor" /> :
                currentRole === 'DOCENTE' ? <Zap className="text-[#061a1a]" size={20} fill="currentColor" /> :
                <GraduationCap className="text-[#061a1a]" size={20} fill="currentColor" />}
             </div>
             {!isSidebarCollapsed && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
+                className="flex-1 min-w-0"
               >
                 <h1 className="text-xl font-black tracking-tighter uppercase italic truncate max-w-[180px]" style={{ color: 'var(--text-main)' }}>
                   {institutionName}
@@ -480,7 +483,7 @@ export function Sidebar({
 
           {isSidebarCollapsed && (
             <div className="flex flex-col items-center gap-4">
-               <button 
+               <button
                  onClick={() => setIsSidebarCollapsed(false)}
                  className="p-3 rounded-2xl bg-white/5 text-white/40 hover:text-white transition-all"
                >

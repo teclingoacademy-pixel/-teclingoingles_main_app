@@ -60,6 +60,7 @@ import { useAppContext } from '../context/AppContext';
 import { SafeZoneTeacherAnalytics } from './SafeZoneTeacherAnalytics';
 import { GruposInglesDocente } from './GruposInglesDocente';
 import { QuickChat } from './QuickChat';
+import { MessageNotificationBell } from './MessageNotificationBell';
 import { TeacherGrades } from './TeacherGrades';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
@@ -257,6 +258,11 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
     setCurrentView('mensajes');
   };
 
+  const handleBellNavigateToChat = (chatId: string) => {
+    setTargetChatId(chatId);
+    setCurrentView('mensajes');
+  };
+
   // Cargar perfil del docente para verificar si está completo
   useEffect(() => {
     const loadProfile = async () => {
@@ -346,7 +352,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
 
   return (
     <div className="lg:grid lg:grid-cols-[auto_1fr] h-screen bg-gradient-to-tr from-[#050506] via-[#18191c] to-[#050506] text-white overflow-hidden relative">
-      <Sidebar 
+      <Sidebar
         items={sidebarItems}
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -356,6 +362,12 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
         userSub="Senior Teacher"
         userInitials="AL"
         userColor="bg-[#4ADE80]"
+        onNavigateToChat={handleBellNavigateToChat}
+      />
+
+      <MessageNotificationBell
+        onNavigateToChat={handleBellNavigateToChat}
+        accentColor="#4ADE80"
       />
 
       {/* Main Content Area */}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { registrarMensaje, registrarChat, obtenerMensajes, obtenerChats } from '../services/identityService';
 
 type Theme = 'dark' | 'light' | 'normal';
@@ -99,6 +99,9 @@ export interface ChatThread {
   messages: Message[];
   lastMessage?: string;
   unreadCount: number;
+  lastReadAt?: string;
+  participantNames?: Record<string, string>;
+  participantRoles?: Record<string, UserRole>;
 }
 
 export interface FolioSignature {
@@ -159,6 +162,8 @@ interface AppContextType {
   addMessage: (chatId: string, message: Message) => void;
   createGroupChat: (groupId: string, name: string, participants: string[]) => void;
   cargarMensajesChat: (chatId: string) => Promise<void>;
+  markChatAsRead: (chatId: string) => void;
+  totalUnreadCount: number;
   folios: Folio[];
   addFolio: (folio: Folio) => void;
   signFolio: (folioId: string, signature: FolioSignature) => void;
@@ -405,6 +410,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   ]);
   const [chats, setChats] = useState<ChatThread[]>([]);
+  const loadingChatsRef = useRef<Set<string>>(new Set());
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [folios, setFolios] = useState<Folio[]>([
     {
@@ -498,6 +504,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userEmail) return;
     let cancelled = false;
+    const userEmailLower = userEmail.toLowerCase();
 
     const cargarChats = async () => {
       try {
@@ -507,21 +514,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setChats(prev => {
           const merged = [...prev];
           remoteChats.forEach((rc: any) => {
-            const exists = merged.find(c => c.id === rc.id);
-            if (!exists) {
-              merged.push({
-                id: rc.id,
-                name: rc.name,
-                type: rc.type,
-                participants: rc.participants || [],
-                messages: [],
-                lastMessage: rc.last_message || '',
-                unreadCount: 0
-              });
+            const existing = merged.find(c => c.id === rc.id);
+            if (existing) {
+              // Si el last_message remoto es más nuevo que el local, marcarlo para refresh
+              // (la lógica de unreadCount se recalcula en cargarMensajesChat)
+              return;
             }
+            const chatType: ChatThread['type'] =
+              rc.type === 'GLOBAL' ? 'GLOBAL' :
+              rc.type === 'DIRECT' ? 'DIRECT' : 'GROUP';
+            const normalizedParticipants: string[] = Array.isArray(rc.participants)
+              ? Array.from(new Set(rc.participants.map((p: string) => String(p || '').trim().toLowerCase()).filter(Boolean)))
+              : [];
+            // Inicializar unreadCount: el last_message es un preview, pero el conteo real
+            // se calculará cuando cargarMensajesChat traiga los mensajes
+            const isFromOther = rc.last_message && rc.last_message_at &&
+              new Date(rc.last_message_at).getTime() > 0;
+            merged.push({
+              id: rc.id,
+              name: rc.name || rc.id,
+              type: chatType,
+              participants: normalizedParticipants,
+              messages: [],
+              lastMessage: rc.last_message || '',
+              unreadCount: 0
+            });
           });
           return merged;
         });
+
+        // Para cada chat remoto con mensajes, calcular no leídos basados en lastReadAt del chat
+        // Si el usuario NUNCA leyó el chat, todos los mensajes de otros cuentan como no leídos
+        for (const rc of remoteChats) {
+          const lastMsg = rc.last_message;
+          if (!lastMsg) continue;
+          // Disparar carga de mensajes para calcular unread real
+          cargarMensajesChat(rc.id);
+        }
       } catch {}
     };
 
@@ -532,9 +561,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [userEmail]);
 
+  // Helper: parsea timestamps en formato "DD/MM/YYYY HH:MM:SS" o ISO
+  const parseTimestamp = useCallback((ts: string): number => {
+    if (!ts) return 0;
+    const iso = Date.parse(ts);
+    if (!isNaN(iso)) return iso;
+    const m = ts.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+    if (m) {
+      const [, d, mo, y, h, mi, s] = m;
+      return new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime();
+    }
+    return 0;
+  }, []);
+
   // Cargar mensajes de un chat específico desde el Data Lake
-  const cargarMensajesChat = async (chatId: string) => {
+  const cargarMensajesChat = useCallback(async (chatId: string) => {
     if (!userEmail) return;
+    if (loadingChatsRef.current.has(chatId)) return;
+    loadingChatsRef.current.add(chatId);
     try {
       const remoteMsgs = await obtenerMensajes(chatId, 100);
       if (!remoteMsgs || remoteMsgs.length === 0) return;
@@ -554,24 +598,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             isDirector: m.is_director === 'TRUE' || m.is_director === true
           }));
         if (newMsgs.length === 0) return chat;
+        const merged = [...chat.messages, ...newMsgs];
+        const lastRead = chat.lastReadAt ? new Date(chat.lastReadAt).getTime() : 0;
+        const userEmailLower = userEmail.toLowerCase();
+        const newUnread = merged.filter(m => {
+          if (m.senderId === 'ME') return false;
+          if (String(m.senderId || '').toLowerCase() === userEmailLower) return false;
+          const ts = parseTimestamp(m.timestamp);
+          return ts > lastRead;
+        }).length;
+        const pNames = { ...chat.participantNames };
+        const pRoles = { ...chat.participantRoles };
+        merged.forEach(m => {
+          const sid = String(m.senderId || '').toLowerCase();
+          if (sid && sid !== 'me' && m.senderName) pNames[sid] = m.senderName;
+          if (sid && sid !== 'me' && m.senderRole) pRoles[sid] = m.senderRole;
+        });
         return {
           ...chat,
-          messages: [...chat.messages, ...newMsgs],
-          lastMessage: newMsgs[newMsgs.length - 1].content
+          messages: merged,
+          lastMessage: newMsgs[newMsgs.length - 1].content,
+          unreadCount: newUnread,
+          participantNames: pNames,
+          participantRoles: pRoles
         };
       }));
-    } catch {}
-  };
+    } catch {} finally {
+      loadingChatsRef.current.delete(chatId);
+    }
+  }, [userEmail, parseTimestamp]);
+
+  // Marcar un chat como leído (setea lastReadAt = ahora y resetea unreadCount)
+  const markChatAsRead = useCallback((chatId: string) => {
+    const now = new Date().toISOString();
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? { ...chat, lastReadAt: now, unreadCount: 0 }
+        : chat
+    ));
+  }, []);
 
   // Auto-cargar mensajes cuando se selecciona un chat
   useEffect(() => {
     if (!userEmail || chats.length === 0) return;
     chats.forEach(chat => {
-      if (chat.messages.length === 0) {
+      if (chat.messages.length === 0 && !loadingChatsRef.current.has(chat.id)) {
         cargarMensajesChat(chat.id);
       }
     });
-  }, [chats.length, userEmail]);
+  }, [chats.length, userEmail, cargarMensajesChat]);
 
   const t = (key: string) => {
     return translations[language][key as keyof typeof translations['en']] || key;
@@ -607,45 +682,60 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setChats(prev => prev.filter(c => c.id !== id));
   };
 
-  const addMessage = (chatId: string, message: Message) => {
-    // Actualizar estado local inmediatamente (optimistic update)
+  const addMessage = useCallback((chatId: string, message: Message) => {
     setChats(prev => prev.map(chat => {
       if (chat.id === chatId) {
+        const isFromOther = message.senderId !== 'ME' &&
+          String(message.senderId || '').toLowerCase() !== String(userEmail || '').toLowerCase();
+        if (isFromOther && chat.lastReadAt) {
+          const lastRead = new Date(chat.lastReadAt).getTime();
+          const msgTs = parseTimestamp(message.timestamp);
+          if (msgTs <= lastRead) {
+            return { ...chat, messages: [...chat.messages, message], lastMessage: message.content };
+          }
+        }
         return {
           ...chat,
           messages: [...chat.messages, message],
           lastMessage: message.content,
-          unreadCount: chat.unreadCount + 1
+          unreadCount: chat.unreadCount + (isFromOther ? 1 : 0)
         };
       }
       return chat;
     }));
 
-    // Persistir al DataLake (fire-and-forget)
     if (userEmail) {
       registrarMensaje(
         userEmail, chatId, message.content,
         message.senderName, message.senderRole, message.isDirector
       ).catch(() => {});
     }
-  };
+  }, [userEmail, parseTimestamp]);
 
-  const createGroupChat = (groupId: string, name: string, participants: string[]) => {
+  const createGroupChat = useCallback((groupId: string, name: string, participants: string[]) => {
+    const chatType: ChatThread['type'] = groupId.startsWith('DIRECT-') ? 'DIRECT' : 'GROUP';
+    const normalizedParticipants = Array.from(
+      new Set(participants.map(p => String(p || '').trim().toLowerCase()).filter(Boolean))
+    );
     const newChat: ChatThread = {
       id: groupId,
       name,
-      type: 'GROUP',
-      participants,
+      type: chatType,
+      participants: normalizedParticipants,
       messages: [],
-      unreadCount: 0
+      unreadCount: 0,
+      lastReadAt: new Date().toISOString()
     };
-    setChats(prev => [...prev, newChat]);
+    setChats(prev => {
+      const exists = prev.find(c => c.id === groupId);
+      if (exists) return prev;
+      return [...prev, newChat];
+    });
 
-    // Persistir chat al DataLake
     if (userEmail) {
-      registrarChat(userEmail, groupId, name, 'GROUP', participants).catch(() => {});
+      registrarChat(userEmail, groupId, name, chatType, normalizedParticipants).catch(() => {});
     }
-  };
+  }, [userEmail]);
 
   return (
     <AppContext.Provider value={{ 
@@ -678,6 +768,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addMessage,
       createGroupChat,
       cargarMensajesChat,
+      markChatAsRead,
+      totalUnreadCount: chats.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
       folios,
       addFolio,
       signFolio,
