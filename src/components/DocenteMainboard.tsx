@@ -59,6 +59,7 @@ import { QRScannerModule } from './QRScannerModule';
 import { useAppContext } from '../context/AppContext';
 import { SafeZoneTeacherAnalytics } from './SafeZoneTeacherAnalytics';
 import { GruposInglesDocente } from './GruposInglesDocente';
+import { QuickChat } from './QuickChat';
 import { TeacherGrades } from './TeacherGrades';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
@@ -175,6 +176,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
     userEmail
   } = useAppContext();
   const [currentView, setCurrentView] = useState('dashboard');
+  const [targetChatId, setTargetChatId] = useState<string | null>(null);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [teacherProfileData, setTeacherProfileData] = useState<Record<string, unknown>>({});
   
@@ -249,6 +251,11 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
   const [isScanning, setIsScanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedGroupForAttendance, setSelectedGroupForAttendance] = useState<string | null>(null);
+
+  const handleNavigateToFullChat = (userId: string) => {
+    setTargetChatId(userId);
+    setCurrentView('mensajes');
+  };
 
   // Cargar perfil del docente para verificar si está completo
   useEffect(() => {
@@ -769,7 +776,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
               ) : currentView === 'asistencias' ? (
                 <TeacherAttendance />
               ) : currentView === 'mensajes' ? (
-                <MessagingModule />
+                <MessagingModule initialChatId={targetChatId || undefined} />
               ) : currentView === 'calendario' ? (
                 <InstitutionalCalendar />
               ) : currentView === 'horarios' ? (
@@ -824,6 +831,9 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
           />
         )}
       </AnimatePresence>
+
+      {/* QuickChat flotante */}
+      <QuickChat onNavigateToFullChat={handleNavigateToFullChat} />
 
       {/* Modal de Onboarding — Perfil incompleto */}
       <ProfileOnboardingModal
