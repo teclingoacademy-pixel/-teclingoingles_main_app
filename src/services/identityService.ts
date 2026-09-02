@@ -10,7 +10,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycbyKlGQK4uy7ZVa4J04cLFuGsYlrkzBy2lGH4gggPrgLo1C6N8J2vVtWL13Iu-bQN0jl/exec';
+  'https://script.google.com/macros/s/AKfycbyGF4Dx2mQ8vKUQiM_PZw-A8iHvJY84nTY_qdRlhL_VBIp0AwMoHsFFXd2IqI7l4uCD/exec';
 
 const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
@@ -30,6 +30,53 @@ interface LakeResponse {
   error?: string;
   exists?: boolean;
   perfil?: Record<string, unknown>;
+}
+
+/** Convierte todos los valores string de un objeto a MAYÚSCULAS (para datos de formulario). */
+function toUpperFields<T extends Record<string, unknown>>(obj: T): T {
+  const out = { ...obj };
+  for (const k of Object.keys(out)) {
+    if (typeof out[k] === 'string' && out[k]) {
+      (out as any)[k] = (out[k] as string).toUpperCase().trim();
+    }
+  }
+  return out;
+}
+
+/**
+ * Versión "segura" de toUpperFields que excluye campos que NO deben convertirse:
+ *  - URLs (http://, https://, drive.google.com, etc.)
+ *  - Emails
+ *  - Imágenes en base64
+ *  - JSON serializado (specialties, certifications, etc.)
+ *  - IDs (usr_xxx, GRP-xxx, etc.)
+ */
+const FIELDS_EXCLUDE_FROM_UPPER = new Set([
+  'avatar', 'institution_logo', 'inst_email', 'facebook', 'instagram', 'linkedin',
+  'email', 'director_email', 'user_id', 'id', 'userId', 'employeeId',
+  'institution_code', // ya viene en mayúsculas
+  'specialties', 'certifications', 'materias_json', 'horario', 'dias',
+  'birth_date', // viene como YYYY-MM-DD
+  'curp', // ya viene en mayúsculas con regex
+  'student_id', // ya viene en mayúsculas
+  'password' // nunca convertir
+]);
+
+function toUpperFieldsSafe<T extends Record<string, unknown>>(obj: T): T {
+  const out = { ...obj };
+  for (const k of Object.keys(out)) {
+    if (FIELDS_EXCLUDE_FROM_UPPER.has(k)) continue;
+    if (typeof out[k] === 'string' && out[k]) {
+      const s = (out[k] as string).trim();
+      // No convertir si parece URL, base64, o JSON
+      if (s.startsWith('http://') || s.startsWith('https://')) continue;
+      if (s.startsWith('data:') || s.length > 200) continue; // base64 o texto largo
+      if (s.startsWith('{') || s.startsWith('[')) continue; // JSON
+      if (s.startsWith('usr_') || s.startsWith('GRP-') || s.startsWith('DIR-')) continue;
+      (out as any)[k] = s.toUpperCase();
+    }
+  }
+  return out;
 }
 
 async function postAlLake(payload: Record<string, unknown>, timeoutMs = 12000): Promise<LakeResponse> {
@@ -87,10 +134,10 @@ export async function registrarUsuario(
       action: 'registrarUsuario',
       email: email.toLowerCase().trim(),
       password,
-      nombre,
+      nombre: nombre.toUpperCase().trim(),
       metodo: 'email',
       rol,
-      institution_code: institutionCode,
+      institution_code: institutionCode.toUpperCase().trim(),
       origen_app: 'teclingo_v4',
     });
     if (res?.ok) {
@@ -245,18 +292,20 @@ export async function guardarPerfil(
     ? { email: emailOrArgs, rol: 'ALUMNO', campos: camposLegacy || {} }
     : emailOrArgs;
   try {
+    // Uniformar todos los valores string a MAYÚSCULAS (excepto URLs y emails)
+    const camposUpper = toUpperFieldsSafe(args.campos);
     const res = await postAlLake({
       action: 'guardarPerfil',
       email: args.email.toLowerCase().trim(),
       rol: args.rol,
-      campos: args.campos,
+      campos: camposUpper,
     }, 15000);
     if (res?.ok) {
       return {
         ok: true,
         perfil: res.perfil,
         actualizados: (res as any).actualizados,
-        hoja: (res as any).hoja, // nombre de la hoja donde se persistió
+        hoja: (res as any).hoja,
       };
     }
     return { ok: false, code: res?.code, error: res?.error };
@@ -541,6 +590,24 @@ export async function listarUsuarios(
     return [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Repara una hoja del Data Lake (corrige headers desalineados y migra datos).
+ * @param nombreHoja - Nombre de la hoja a reparar (ej: 'DOCENTES', 'ALUMNOS')
+ */
+export async function repararHojaRol(
+  nombreHoja: string
+): Promise<{ ok: boolean; filasReparadas?: number; error?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'repararHojaRol',
+      nombreHoja
+    }, 30000);
+    return res as any;
+  } catch {
+    return { ok: false, error: 'error_conexion' };
   }
 }
 
@@ -903,5 +970,6 @@ const identityService = {
   misGruposIngles,
   registrarAsistencia,
   obtenerAsistenciaGrupo,
+  repararHojaRol,
 };
 export default identityService;
