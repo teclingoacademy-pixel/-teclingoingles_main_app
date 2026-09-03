@@ -30,6 +30,10 @@ interface LakeResponse {
   error?: string;
   exists?: boolean;
   perfil?: Record<string, unknown>;
+  hitos?: Array<Record<string, unknown>>;
+  asesorias?: Array<Record<string, unknown>>;
+  config?: Record<string, unknown>;
+  asesoria_id?: string;
 }
 
 /** Convierte todos los valores string de un objeto a MAYÚSCULAS (para datos de formulario). */
@@ -971,5 +975,96 @@ const identityService = {
   registrarAsistencia,
   obtenerAsistenciaGrupo,
   repararHojaRol,
+  listarHorariosDisponiblesDocente,
 };
+
+/**
+ * Lista horarios disponibles de asesoría para un docente específico.
+ * Retorna solo los slots con estado AVAILABLE.
+ */
+export async function listarHorariosDisponiblesDocente(docenteEmail: string): Promise<Array<{
+  asesoria_id: string;
+  dia: string;
+  hora: string;
+  plataforma: string;
+  lugar: string;
+  duracion_minutos: number;
+  max_alumnos_por_slot: number;
+  anticipacion_horas_min: number;
+  estado: string;
+}>> {
+  try {
+    const res = await postAlLake({
+      action: 'listarHitosAsesoria',
+      email: docenteEmail.toLowerCase().trim(),
+      solo_disponibles: true,
+    }, 10000);
+    if (res?.ok && Array.isArray(res.hitos)) {
+      return res.hitos as Array<{
+        asesoria_id: string;
+        dia: string;
+        hora: string;
+        plataforma: string;
+        lugar: string;
+        duracion_minutos: number;
+        max_alumnos_por_slot: number;
+        anticipacion_horas_min: number;
+        estado: string;
+      }>;
+    }
+    return [];
+  } catch (err) {
+    console.warn('[Identity] Error listando horarios disponibles:', err);
+    return [];
+  }
+}
+
+/**
+ * Crea un nuevo hito de disponibilidad de asesoría.
+ */
+export async function crearHitoAsesoria(data: {
+  email: string;
+  dia: string;
+  hora: string;
+  plataforma: string;
+  lugar: string;
+  duracion_minutos?: number;
+  max_alumnos_por_slot?: number;
+  anticipacion_horas_min?: number;
+}): Promise<{ ok: boolean; asesoria_id?: string; error?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'crearHitoAsesoria',
+      ...data,
+    }, 10000);
+    if (res?.ok) {
+      return { ok: true, asesoria_id: res.asesoria_id as string };
+    }
+    return { ok: false, error: res?.error || 'error_desconocido' };
+  } catch (err) {
+    console.warn('[Identity] Error creando hito de asesoría:', err);
+    return { ok: false, error: 'api_unreachable' };
+  }
+}
+
+/**
+ * Elimina un hito de disponibilidad de asesoría.
+ */
+export async function eliminarHitoAsesoria(
+  email: string,
+  asesoriaId: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'eliminarHitoAsesoria',
+      email,
+      asesoria_id: asesoriaId,
+    }, 10000);
+    return { ok: Boolean(res?.ok), error: res?.error };
+  } catch (err) {
+    console.warn('[Identity] Error eliminando hito:', err);
+    return { ok: false, error: 'api_unreachable' };
+  }
+}
+
 export default identityService;

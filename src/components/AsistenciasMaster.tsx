@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 
 interface AttendanceGroup {
   id: string;
@@ -210,7 +211,7 @@ export function AsistenciasMaster() {
                         <ArrowUpRight size={14} className="text-white/20 group-hover:text-white" />
                      </div>
                      <div className="h-32 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                         <SafeResponsiveContainer width="100%" height="100%">
                           <PieChart>
                              <Pie
                                 data={[
@@ -229,8 +230,8 @@ export function AsistenciasMaster() {
                                 <Cell key="cell-0" fill={group.percentage > 80 ? '#DEFF9A' : group.percentage > 70 ? '#4ADE80' : '#F59E0B'} stroke="none" />
                                 <Cell key="cell-1" fill="rgba(255,255,255,0.05)" stroke="none" />
                              </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
+                           </PieChart>
+                        </SafeResponsiveContainer>
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-4">
                            <span className="text-xl font-black text-white">{group.percentage}%</span>
                         </div>

@@ -43,14 +43,14 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
 import { GlassCard } from './GlassCard';
-import { listarUsuarios, UsuarioComunidad } from '../services/identityService';
+import { listarUsuarios, UsuarioComunidad, repararHojaRol } from '../services/identityService';
 import { 
   Radar, 
   RadarChart, 
   PolarGrid, 
   PolarAngleAxis, 
-  ResponsiveContainer 
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 
 type UserRole = 'ADMIN' | 'DOCENTE' | 'ALUMNO' | 'TUTOR' | 'DIRECTOR';
 
@@ -590,7 +590,7 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                       <div className="absolute inset-0 bg-[#38BDF8]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                       
                       <div className="h-[250px] w-full flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
+                         <SafeResponsiveContainer width="100%" height="100%">
                           <RadarChart cx="50%" cy="50%" outerRadius="80%" data={adnData}>
                             <PolarGrid stroke="#ffffff10" />
                             <PolarAngleAxis dataKey="subject" tick={{ fill: '#ffffff40', fontSize: 10, fontWeight: 900 }} />
@@ -601,8 +601,8 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                               fill="#38BDF8"
                               fillOpacity={0.5}
                             />
-                          </RadarChart>
-                        </ResponsiveContainer>
+                           </RadarChart>
+                        </SafeResponsiveContainer>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4 mt-6">
@@ -935,6 +935,8 @@ export function UsersMaster() {
   const [modalMode, setModalMode] = useState<'VIEW' | 'EDIT'>('VIEW');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<string | null>(null);
 
   // Cargar usuarios del Data Lake según filtro
   const cargarUsuarios = async (
@@ -1013,6 +1015,28 @@ export function UsersMaster() {
     setSelectedUser(updatedUser);
   };
 
+  const handleRepairSheet = async (sheetName: string) => {
+    if (!confirm(`¿Reparar la hoja ${sheetName}? Esto corregirá los headers desalineados y migrará los datos.`)) {
+      return;
+    }
+    setRepairing(true);
+    setRepairResult(null);
+    try {
+      const result = await repararHojaRol(sheetName);
+      if (result.ok) {
+        setRepairResult(`✅ Hoja ${sheetName} reparada: ${result.filasReparadas} filas migradas`);
+        // Recargar usuarios después de la reparación
+        await cargarUsuarios(filter, search);
+      } else {
+        setRepairResult(`❌ Error: ${result.error}`);
+      }
+    } catch (err) {
+      setRepairResult('❌ Error de conexión al reparar');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -1039,8 +1063,22 @@ export function UsersMaster() {
           <button className="bg-[#DEFF9A] text-[#061a1a] rounded-2xl px-6 py-3 font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:shadow-[0_0_20px_#DEFF9A80] transition-all">
             <UserPlus size={16} /> Alta Usuario
           </button>
+          <button 
+            onClick={() => handleRepairSheet('DOCENTES')}
+            disabled={repairing}
+            className="bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-2xl px-4 py-3 font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-orange-500/30 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={repairing ? 'animate-spin' : ''} /> 
+            Reparar DOCENTES
+          </button>
         </div>
       </header>
+
+      {repairResult && (
+        <div className={`px-4 py-3 rounded-2xl text-xs font-bold ${repairResult.startsWith('✅') ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+          {repairResult}
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
         {[

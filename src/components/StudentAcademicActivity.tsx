@@ -12,7 +12,6 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer, 
   AreaChart, 
   Area, 
   PieChart, 
@@ -21,6 +20,7 @@ import {
   LineChart,
   Line
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { 
   Search, 
   Filter, 
@@ -239,7 +239,7 @@ export function StudentAcademicActivity({ role }: AcademicActivityProps) {
         <div className="col-span-12 lg:col-span-4">
            <GlassCard title="AI Tool Impact" icon={Sparkles} accent="cyan">
               <div className="h-[280px] w-full mt-6">
-                 <ResponsiveContainer width="100%" height="100%">
+                 <SafeResponsiveContainer width="100%" height="100%">
                     <PieChart>
                        <Pie
                          data={currentStats.toolImpact}
@@ -259,7 +259,7 @@ export function StudentAcademicActivity({ role }: AcademicActivityProps) {
                         itemStyle={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900' }}
                        />
                     </PieChart>
-                 </ResponsiveContainer>
+                 </SafeResponsiveContainer>
               </div>
               <div className="space-y-3 mt-6">
                  {currentStats.toolImpact.map((tool) => (
@@ -279,7 +279,7 @@ export function StudentAcademicActivity({ role }: AcademicActivityProps) {
         <div className="col-span-12 lg:col-span-9">
            <GlassCard title="Learning Curve Evolution" icon={TrendingUp} accent="cyan">
               <div className="h-[350px] w-full mt-8">
-                 <ResponsiveContainer width="100%" height="100%">
+                 <SafeResponsiveContainer width="100%" height="100%">
                     <AreaChart data={currentStats.learningCurve}>
                        <defs>
                           <linearGradient id="colorCurve" x1="0" y1="0" x2="0" y2="1">
@@ -315,7 +315,7 @@ export function StudentAcademicActivity({ role }: AcademicActivityProps) {
                          dot={{ r: 4, fill: '#8B5CF6', strokeWidth: 2, stroke: '#061a1a' }}
                        />
                     </AreaChart>
-                 </ResponsiveContainer>
+                 </SafeResponsiveContainer>
               </div>
            </GlassCard>
         </div>

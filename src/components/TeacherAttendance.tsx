@@ -23,9 +23,9 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
   Cell 
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { motion } from 'motion/react';
 import { GlassCard } from './GlassCard';
 
@@ -154,7 +154,7 @@ export function TeacherAttendance() {
          <div className="col-span-12 lg:col-span-8">
             <GlassCard title="Rendimiento Semanal del Grupo" icon={BarChart3} accent="green">
                <div className="h-[350px] w-full mt-8">
-                  <ResponsiveContainer width="100%" height="100%">
+                   <SafeResponsiveContainer width="100%" height="100%">
                      <BarChart data={attendanceByDay}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                         <XAxis 
@@ -180,7 +180,7 @@ export function TeacherAttendance() {
                            ))}
                         </Bar>
                      </BarChart>
-                  </ResponsiveContainer>
+                  </SafeResponsiveContainer>
                </div>
             </GlassCard>
          </div>

@@ -20,10 +20,10 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer 
 } from 'recharts';
 import { motion } from 'motion/react';
 import { GlassCard } from './GlassCard';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 
 const performanceData = [
   { level: 'A1-Init', score: 72 },
@@ -130,7 +130,7 @@ export function StudentGrades() {
         <div className="col-span-12">
            <GlassCard title="Evolución de Certificación (Vía TECLINGO PRO 1.1)" icon={TrendingUp} accent="green">
               <div className="h-[300px] w-full mt-8">
-                 <ResponsiveContainer width="100%" height="100%">
+                 <SafeResponsiveContainer width="100%" height="100%">
                     <LineChart data={performanceData}>
                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                        <XAxis 
@@ -157,8 +157,8 @@ export function StudentGrades() {
                         dot={{ fill: '#DEFF9A', r: 6, strokeWidth: 2, stroke: '#061a1a' }}
                         activeDot={{ r: 8, stroke: '#DEFF9A', strokeWidth: 2, fill: '#0a0c10' }}
                        />
-                    </LineChart>
-                 </ResponsiveContainer>
+                     </LineChart>
+                  </SafeResponsiveContainer>
               </div>
               <div className="mt-8 pt-8 border-t border-white/5 flex flex-wrap gap-12">
                  <div className="flex items-center gap-4">

@@ -11,10 +11,10 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer, 
   Cell,
   Legend
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { 
   Activity, 
   Camera, 
@@ -85,7 +85,7 @@ export function AcademicAudit() {
           className="col-span-12 lg:col-span-8"
         >
           <div className="h-[350px] w-full mt-6">
-            <ResponsiveContainer width="100%" height="100%">
+            <SafeResponsiveContainer width="100%" height="100%">
               <BarChart data={auditMetrics} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
                 <XAxis 
@@ -125,7 +125,7 @@ export function AcademicAudit() {
                 </Bar>
                 <Bar name="Planeación" dataKey="planned" fill="#ffffff15" radius={[6, 6, 0, 0]} barSize={24} />
               </BarChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
           </div>
         </GlassCard>
 

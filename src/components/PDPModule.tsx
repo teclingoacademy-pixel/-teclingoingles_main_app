@@ -9,8 +9,8 @@ import {
   PolarGrid, 
   PolarAngleAxis, 
   PolarRadiusAxis, 
-  ResponsiveContainer 
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { 
   Target, 
   Zap, 
@@ -48,7 +48,7 @@ export function PDPModule() {
         <div className="col-span-12 lg:col-span-7">
           <GlassCard title="Mapa de Habilidades TECLINGO" icon={TrendingUp} accent="green">
             <div className="h-[400px] w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveContainer width="100%" height="100%">
                 <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
                   <PolarGrid stroke="rgba(255,255,255,0.05)" />
                   <PolarAngleAxis 
@@ -68,8 +68,8 @@ export function PDPModule() {
                     fill="#DEFF9A"
                     fillOpacity={0.2}
                   />
-                </RadarChart>
-              </ResponsiveContainer>
+                 </RadarChart>
+              </SafeResponsiveContainer>
             </div>
             <div className="mt-8 grid grid-cols-2 gap-4">
                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">

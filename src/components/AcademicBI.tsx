@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { GlassCard } from './GlassCard';
 import { Activity, Brain, Lightbulb, TrendingUp } from 'lucide-react';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 
 const academicData = [
   { name: 'W1', progress: 10, planning: 12 },
@@ -36,7 +37,7 @@ export function AcademicBI() {
       <div className="grid grid-cols-12 gap-8">
         <div className="col-span-12 lg:col-span-8">
           <div className="h-[280px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
+            <SafeResponsiveContainer width="100%" height="100%">
               <AreaChart data={academicData}>
                 <defs>
                   <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
@@ -73,7 +74,7 @@ export function AcademicBI() {
                   strokeDasharray="5 5"
                 />
               </AreaChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
           </div>
           <div className="mt-6 flex gap-6">
              <div className="flex items-center gap-2">

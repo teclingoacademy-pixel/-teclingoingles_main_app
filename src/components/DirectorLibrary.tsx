@@ -1,19 +1,18 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
+@license
+SPDX-License-Identifier: Apache-2.0
+*/
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  UploadCloud, 
-  FileCode, 
-  FileText, 
-  Database, 
-  Trash2, 
-  Search, 
-  ShieldCheck, 
-  Terminal, 
-  CheckCircle2, 
+import {
+  UploadCloud,
+  FileCode,
+  FileText,
+  Database,
+  Trash2,
+  Search,
+  ShieldCheck,
+  Terminal,
+  CheckCircle2,
   AlertTriangle,
   RefreshCw,
   Sparkles,
@@ -45,9 +44,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
-import { mallaCurricularModulo1, SemanaMalla } from '../data/mallaCurricularModulo1';
-import { LibroVirtualDirectorCompleto } from './LibroVirtualDirectorCompleto';
+import { LibroVirtual } from './LibroVirtual';
 
+const API_URL_READ = "https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec";
+const API_URL_WRITE = "https://script.google.com/macros/s/AKfycbyGF4Dx2mQ8vKUQiM_PZw-A8iHvJY84nTY_qdRlhL_VBIp0AwMoHsFFXd2IqI7l4uCD/exec";
+
+// Interfaces
 interface LibraryDoc {
   id: string;
   name: string;
@@ -82,6 +84,24 @@ interface TOEFLSkill {
   kpi: string;
   accreditation: string;
   description: string;
+}
+
+interface HoraLeccion {
+  hora: number;
+  leccion: string;
+  enfoque: string;
+  videoId: string;
+  track: string;
+}
+
+interface SemanaMalla {
+  semana: number;
+  fechas: string;
+  eje_tematico: string;
+  unidad_libro: string;
+  paginas: string;
+  horas: HoraLeccion[];
+  kpi: string;
 }
 
 interface GroupDiagnosis {
@@ -141,23 +161,26 @@ export function DirectorLibrary() {
   const [activeSubTab, setActiveSubTab] = useState<
     'Plan de Estudio' | 'Cargas & Archivos' | 'Libro Virtual Maestro' | 'Estructura Reticular' | 'Distribución Académica' | 'Creador de Exámenes'
   >('Plan de Estudio');
-
   const [selectedSemester, setSelectedSemester] = useState<string>('Semestre 01');
   const [searchQuery, setSearchQuery] = useState('');
   const [openWeeks, setOpenWeeks] = useState<{ [key: number]: boolean }>({ 1: true });
   const [dragActive, setDragActive] = useState(false);
 
+  // Estados para cargar malla curricular desde Google Sheets
+  const [mallaCurricularData, setMallaCurricularData] = useState<SemanaMalla[]>([]);
+  const [isLoadingMalla, setIsLoadingMalla] = useState(true);
+
   // States for Exam Builder / Test Maker
   const [examTitle, setExamTitle] = useState('EVALUACIÓN PARCIAL DE INGLÉS TÉCNICO I');
   const [examDuration, setExamDuration] = useState(60);
-  const [examGroup, setExamGroup] = useState('all'); // 'all', or specific group ID
+  const [examGroup, setExamGroup] = useState('all');
   const [examSemester, setExamSemester] = useState('Semestre 01');
   const [draggedItemType, setDraggedItemType] = useState<string | null>(null);
   const [isDraggingOverCanvas, setIsDraggingOverCanvas] = useState(false);
   const [isDistributedSuccess, setIsDistributedSuccess] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [selectedWeekForSyllabusTemplate, setSelectedWeekForSyllabusTemplate] = useState<number>(1);
-
+  
   const [canvasQuestions, setCanvasQuestions] = useState<Array<{
     id: string;
     type: 'multiple-choice' | 'true-false' | 'fill-blanks' | 'speaking';
@@ -216,8 +239,6 @@ export function DirectorLibrary() {
     } catch (e) {
       console.error(e);
     }
-
-    // Enforce strict uniqueness to prevent duplicate key warnings
     const seen = new Set<string>();
     const unique: any[] = [];
     for (const ex of rawExams) {
@@ -238,6 +259,48 @@ export function DirectorLibrary() {
       console.error(e);
     }
   }, [createdExams]);
+
+  // Cargar malla curricular desde Google Sheets
+  useEffect(() => {
+    const fetchMallaCurricular = async () => {
+      try {
+        setIsLoadingMalla(true);
+        const res = await fetch(`${API_URL_READ}?action=read&sheet=MallaCurricular`);
+        const rawData = await res.json();
+
+        // Extraer array: la API puede devolver un array directo, { rows: [...] }, { data: [...] } o { result: [...] }
+        let data: any[] = [];
+        if (Array.isArray(rawData)) {
+          data = rawData;
+        } else if (rawData && typeof rawData === 'object') {
+          data = rawData.rows || rawData.data || rawData.result || [];
+        }
+        if (!Array.isArray(data)) {
+          data = [];
+        }
+
+        // Transformar datos de Sheets al formato SemanaMalla
+        const transformedData: SemanaMalla[] = data.map((row: any) => ({
+          semana: Number(row.semana),
+          fechas: row.fechas || '',
+          eje_tematico: row.eje_tematico || '',
+          unidad_libro: row.unidad_libro || '',
+          paginas: row.paginas || '',
+          kpi: row.kpi || '',
+          horas: typeof row.horas_json === 'string' ? JSON.parse(row.horas_json) : (row.horas || [])
+        }));
+        
+        setMallaCurricularData(transformedData);
+      } catch (error) {
+        console.error("Error cargando MallaCurricular desde Sheets:", error);
+        addLog("❌ ERROR: Fallo al cargar la malla curricular desde Google Sheets");
+      } finally {
+        setIsLoadingMalla(false);
+      }
+    };
+
+    fetchMallaCurricular();
+  }, []);
 
   const handleAddNewQuestion = (type: 'multiple-choice' | 'true-false' | 'fill-blanks' | 'speaking', predefinedData?: any) => {
     const id = 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -263,7 +326,6 @@ export function DirectorLibrary() {
       timeLimit: predefinedData?.timeLimit || '1 min',
       precisionThreshold: predefinedData?.precisionThreshold || 80
     };
-    
     setCanvasQuestions(prev => [...prev, newQ]);
     if (typeof addLog === 'function') {
       addLog(`CLIENT: Añadido reactivo tipo "${type}" al examen lineal.`);
@@ -274,10 +336,8 @@ export function DirectorLibrary() {
     if (typeof addLog === 'function') {
       addLog(`CLIENT: Consultando planeación académica para semestre [${examSemester}] y grupo [${examGroup}]...`);
     }
-
     const grLabel = examGroup === 'all' ? 'GLOBAL' : examGroup;
     setExamTitle(`EVALUACIÓN PARCIAL CONTEXTUAL DE IA - GRUPO ${grLabel} (${examSemester})`.toUpperCase());
-
     const idSeed = Date.now();
     const generated = [
       {
@@ -326,14 +386,13 @@ export function DirectorLibrary() {
         precisionThreshold: 80
       }
     ];
-
     setCanvasQuestions(generated);
     if (typeof addLog === 'function') {
       addLog(`CLIENT: Generador IA pobló el examen de forma automática con 4 reactivos (100 puntos totales).`);
     }
   };
 
-  const handleDistributeExam = () => {
+  const handleDistributeExam = async () => {
     if (canvasQuestions.length === 0) return;
     const totalPoints = canvasQuestions.reduce((acc, q) => acc + q.points, 0);
     const newExam = {
@@ -344,25 +403,44 @@ export function DirectorLibrary() {
       duration: examDuration || 45,
       questionCount: canvasQuestions.length,
       totalPoints,
-      createdAt: 'Hov, ' + new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).toUpperCase()
+      createdAt: 'Hoy, ' + new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).toUpperCase()
     };
-
     setCreatedExams(prev => [newExam, ...prev]);
     setIsDistributedSuccess(true);
-    
-    // Set a timeout to clear the success celebration
     setTimeout(() => {
       setIsDistributedSuccess(false);
       setCanvasQuestions([]);
       setExamTitle('NUEVA EVALUACIÓN DE INGLÉS TÉCNICO II');
     }, 4500);
-
     if (typeof addLog === 'function') {
       addLog(`CLIENT: Examen "${newExam.title}" distribuido con éxito a grupo [${examGroup}].`);
     }
+    try {
+      await fetch(API_URL_WRITE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'append',
+          sheet: 'BancoPreguntas',
+          rowData: {
+            id: newExam.id,
+            tipo: 'examen_completo',
+            pregunta: newExam.title,
+            opciones_json: JSON.stringify(canvasQuestions),
+            respuesta_correcta: 'N/A',
+            puntos: totalPoints,
+            semana_malla: examSemester,
+            semestre: examSemester
+          }
+        })
+      });
+      addLog(`️ CLOUD SUCCESS: Examen "${newExam.title}" guardado en la base de datos central.`);
+    } catch (error) {
+      console.error("Error guardando en Sheets:", error);
+      addLog(`❌ CLOUD ERROR: Fallo al sincronizar el examen con la base de datos.`);
+    }
   };
-  
-  // Local persistence for files, careers, and assignments
+
   const [uploadedFiles, setUploadedFiles] = useState<LibraryDoc[]>(() => {
     try {
       const saved = localStorage.getItem('library_uploaded_docs');
@@ -378,44 +456,8 @@ export function DirectorLibrary() {
     ];
   });
 
-  const [careers, setCareers] = useState<Career[]>(() => {
-    try {
-      const saved = localStorage.getItem('library_careers');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return [
-      {
-        id: 'isc',
-        name: 'Ingeniería en Sistemas Computacionales',
-        code: 'IINF-2010-220',
-        limitHours: 33,
-        subjects: [
-          { code: 'TEC-001', name: 'TecLingo AI (Inglés I)', semester: 1, hours: 4 },
-          { code: 'ISC-201', name: 'Práctica de Redes', semester: 2, hours: 4 },
-          { code: 'ISC-202', name: 'Estructura de Datos', semester: 2, hours: 4 },
-          { code: 'ISC-203', name: 'Programación Web', semester: 2, hours: 5 },
-          { code: 'ISC-204', name: 'Arquitectura de Computadoras', semester: 2, hours: 4 },
-          { code: 'ISC-205', name: 'Inteligencia Artificial Avanzada', semester: 2, hours: 3 }
-        ]
-      },
-      {
-        id: 'ii',
-        name: 'Ingeniería Industrial',
-        code: 'IIND-2018-125',
-        limitHours: 30,
-        subjects: [
-          { code: 'TEC-001-IND', name: 'TecLingo AI (Inglés Técnico)', semester: 1, hours: 4 },
-          { code: 'IND-101', name: 'Estadística Industrial', semester: 1, hours: 5 },
-          { code: 'IND-102', name: 'Procesos de Fabricación', semester: 2, hours: 4 }
-        ]
-      }
-    ];
-  });
-
+  const [careers, setCareers] = useState<Career[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [distAssignments, setDistAssignments] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem('dist_assignments');
@@ -435,13 +477,11 @@ export function DirectorLibrary() {
     };
   });
 
-  // UI Control Modals
   const [showAddCareerModal, setShowAddCareerModal] = useState(false);
-  const [showAddSubjectModal, setShowAddSubjectModal] = useState<string | null>(null); // careerId
+  const [showAddSubjectModal, setShowAddSubjectModal] = useState<string | null>(null);
   const [showEditCareerModal, setShowEditCareerModal] = useState<Career | null>(null);
   const [showEditSubjectModal, setShowEditSubjectModal] = useState<{ careerId: string; subject: Subject } | null>(null);
-  
-  // Forms state
+
   const [newCareerName, setNewCareerName] = useState('');
   const [newCareerCode, setNewCareerCode] = useState('');
   const [newCareerLimitHours, setNewCareerLimitHours] = useState<number>(33);
@@ -450,9 +490,7 @@ export function DirectorLibrary() {
   const [newSubjectSemester, setNewSubjectSemester] = useState<number>(1);
   const [newSubjectHours, setNewSubjectHours] = useState<number>(4);
 
-  // Expanded carrier card state
   const [expandedCareers, setExpandedCareers] = useState<Record<string, boolean>>({ isc: true });
-
   const [activeUploadTab, setActiveUploadTab] = useState<'JSON' | 'PDF' | 'PLAIN'>('JSON');
   const [plainText, setPlainText] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
@@ -460,14 +498,10 @@ export function DirectorLibrary() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Selected book unit inside the Libro Virtual Maestro
   const [selectedBookUnit, setSelectedBookUnit] = useState<number>(1);
   const [selectedBookPage, setSelectedBookPage] = useState<number>(4);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const semesters = ['Semestre 01', 'Semestre 02', 'Semestre 03', 'Semestre 04', 'Semestre 05', 'Semestre 06'];
-
   const teachersList = [
     { id: 'ana_lopez', name: 'Mtra. Ana López', spec: 'Inglés / Idiomas' },
     { id: 'chucho_serna', name: 'Mtro. Chucho Serna', spec: 'Redes y Telecomunicaciones' },
@@ -475,7 +509,6 @@ export function DirectorLibrary() {
     { id: 'sofia_ruiz', name: 'Mtra. Sofía Ruiz', spec: 'Ingeniería de Software / Web' },
     { id: 'luis_garcia', name: 'Mtro. Luis García', spec: 'Hardware y Arquitectura' }
   ];
-
   const subjectQualifiedTeachers: Record<string, string[]> = {
     'TEC-001': ['ana_lopez', 'sofia_ruiz'],
     'ISC-201': ['chucho_serna', 'luis_garcia'],
@@ -489,7 +522,6 @@ export function DirectorLibrary() {
     const semester = selectedSemester;
     const isLevelA1 = semester === 'Semestre 01' || semester === 'Semestre 02';
     const isLevelA2 = semester === 'Semestre 03' || semester === 'Semestre 04';
-    
     let cefrTag = 'B1.1';
     if (semester === 'Semestre 01') cefrTag = 'A1.1';
     else if (semester === 'Semestre 02') cefrTag = 'A1.2';
@@ -497,7 +529,7 @@ export function DirectorLibrary() {
     else if (semester === 'Semestre 04') cefrTag = 'A2.2';
     else if (semester === 'Semestre 05') cefrTag = 'B1.1';
     else if (semester === 'Semestre 06') cefrTag = 'B1.2';
-
+    
     if (isLevelA1) {
       return [
         { 
@@ -650,8 +682,44 @@ export function DirectorLibrary() {
   }, [uploadedFiles]);
 
   useEffect(() => {
-    localStorage.setItem('library_careers', JSON.stringify(careers));
-  }, [careers]);
+    const fetchDatabase = async () => {
+      try {
+        addLog("☁️ CLOUD: Conectando con la base de datos central en Google Sheets...");
+        const resCareers = await fetch(`${API_URL_READ}?action=read&sheet=Carreras`);
+        const dataCareersRaw = await resCareers.json();
+        const dataCareers: any[] = Array.isArray(dataCareersRaw)
+          ? dataCareersRaw
+          : (dataCareersRaw?.rows || dataCareersRaw?.data || dataCareersRaw?.result || []);
+        const resSubjects = await fetch(`${API_URL_READ}?action=read&sheet=Asignaturas`);
+        const dataSubjectsRaw = await resSubjects.json();
+        const dataSubjects: any[] = Array.isArray(dataSubjectsRaw)
+          ? dataSubjectsRaw
+          : (dataSubjectsRaw?.rows || dataSubjectsRaw?.data || dataSubjectsRaw?.result || []);
+        const combinedCareers: Career[] = dataCareers.map((c: any) => ({
+          id: c.id,
+          name: c.nombre,
+          code: c.clave,
+          limitHours: Number(c.limite_horas),
+          subjects: dataSubjects
+            .filter((s: any) => s.carrera_id === c.id)
+            .map((s: any) => ({
+              code: s.clave,
+              name: s.nombre,
+              semester: Number(s.semestre),
+              hours: Number(s.horas)
+            }))
+        }));
+        setCareers(combinedCareers);
+        addLog("✅ CLOUD SUCCESS: Malla reticular y carreras sincronizadas desde la nube.");
+      } catch (error) {
+        console.error("Error cargando datos desde Google Sheets:", error);
+        addLog(" CLOUD ERROR: Fallo de conexión con la base de datos.");
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+    fetchDatabase();
+  }, []);
 
   const saveDistAssignments = (newAssignments: Record<string, string>) => {
     setDistAssignments(newAssignments);
@@ -681,7 +749,6 @@ export function DirectorLibrary() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
       await validateAndProcessFile(droppedFile);
@@ -700,11 +767,8 @@ export function DirectorLibrary() {
     setSuccessMsg(null);
     setConsoleLogs([]);
     setIsProcessing(true);
-
     addLog(`CLIENT: Iniciando verificación local de archivo "${file.name}"...`);
     const ext = file.name.split('.').pop()?.toLowerCase();
-
-    // Extension checks matching tabs
     if (activeUploadTab === 'JSON' && ext !== 'json') {
       setErrorCode('Error: Formato no coincidente. Estás en la pestaña JSON, por lo que solo se permiten archivos .json.');
       addLog(`CLIENT-ERROR: Intento de cargar archivo .${ext} bloqueado en la pestaña JSON.`);
@@ -717,25 +781,19 @@ export function DirectorLibrary() {
       setIsProcessing(false);
       return;
     }
-
     await new Promise(resolve => setTimeout(resolve, 800));
-
-    // Simulated Server Checks
     addLog(`🔄 API [POST] /api/library/upload - Recibiendo stream de datos...`);
     await new Promise(resolve => setTimeout(resolve, 600));
     addLog(`🛡️ MIDDLEWARE: Analizando firma criptográfica ("magic bytes") y hashes...`);
     await new Promise(resolve => setTimeout(resolve, 600));
-
     if (ext === 'pdf') {
       addLog(`CLIENT: Cabecera detectada %PDF-1.4. Ingesta autorizada.`);
     } else if (ext === 'json') {
       addLog(`CLIENT: Validador estructural JSON: Schema matches "Teclingo.Curriculum.v1"`);
     }
-
     await new Promise(resolve => setTimeout(resolve, 500));
     addLog(`💾 DATABASE: Sincronizando registro inmutable en Firestore...`);
     await new Promise(resolve => setTimeout(resolve, 500));
-
     const newDoc: LibraryDoc = {
       id: `doc_${Date.now()}`,
       name: file.name,
@@ -748,7 +806,6 @@ export function DirectorLibrary() {
       checksum: `SHA256:${Math.random().toString(16).substring(2, 10).toUpperCase()}`,
       description: ext === 'pdf' ? 'Manual Técnico Oficial Autenticado' : 'Esquema de Malla Curricular / Syllabus'
     };
-
     setUploadedFiles(prev => [newDoc, ...prev]);
     setSuccessMsg(`¡Carga Completa! El archivo "${file.name}" fue verificado por el servidor y guardado.`);
     addLog(`🚀 DATABASE SUCCESS: Documento "${file.name}" guardado exitosamente.`);
@@ -761,12 +818,10 @@ export function DirectorLibrary() {
       setErrorCode('La longitud del texto excede el límite de 15,000 caracteres.');
       return;
     }
-
     setErrorCode(null);
     setSuccessMsg(null);
     setConsoleLogs([]);
     setIsProcessing(true);
-
     addLog(`CLIENT: Iniciando procesamiento de texto libre (${plainText.length} caracteres)...`);
     await new Promise(r => setTimeout(r, 400));
     addLog(`CLIENT: Verificación de longitud superada (máx 15,000).`);
@@ -777,7 +832,6 @@ export function DirectorLibrary() {
     await new Promise(r => setTimeout(r, 700));
     addLog(`💾 DATABASE: Creando archivo de plan estructurado en Firestore...`);
     await new Promise(r => setTimeout(r, 400));
-
     const generatedName = `Syllabus_Manual_Pasted_${Math.floor(Math.random() * 900 + 100)}.json`;
     const newDoc: LibraryDoc = {
       id: `doc_${Date.now()}`,
@@ -789,7 +843,6 @@ export function DirectorLibrary() {
       checksum: `SHA256:${Math.random().toString(16).substring(2, 10).toUpperCase()}`,
       description: 'Syllabus Extraído por Procesamiento Semántico'
     };
-
     setUploadedFiles(prev => [newDoc, ...prev]);
     setSuccessMsg(`¡Procesado Completo! Se generó el plan académico "${generatedName}" a partir del texto ingresado.`);
     addLog(`🚀 DATABASE SUCCESS: Documento creado con mallas reticulares estructuradas.`);
@@ -804,11 +857,9 @@ export function DirectorLibrary() {
     }
   };
 
-  // Careers & Subjects Form handlers
   const handleAddCareer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCareerName.trim() || !newCareerCode.trim()) return;
-
     const id = `career_${Date.now()}`;
     const newCareer: Career = {
       id,
@@ -817,7 +868,6 @@ export function DirectorLibrary() {
       limitHours: Number(newCareerLimitHours) || 33,
       subjects: []
     };
-
     setCareers(prev => [...prev, newCareer]);
     setExpandedCareers(prev => ({ ...prev, [id]: true }));
     setNewCareerName('');
@@ -831,14 +881,12 @@ export function DirectorLibrary() {
     e.preventDefault();
     const careerId = showAddSubjectModal;
     if (!careerId || !newSubjectName.trim() || !newSubjectCode.trim()) return;
-
     const newSub: Subject = {
       code: newSubjectCode.trim().toUpperCase(),
       name: newSubjectName.trim(),
       semester: Number(newSubjectSemester) || 1,
       hours: Number(newSubjectHours) || 4
     };
-
     setCareers(prev => prev.map(c => {
       if (c.id === careerId) {
         if (c.subjects.some(s => s.code === newSub.code)) {
@@ -849,7 +897,6 @@ export function DirectorLibrary() {
       }
       return c;
     }));
-
     setNewSubjectName('');
     setNewSubjectCode('');
     setNewSubjectSemester(1);
@@ -916,15 +963,15 @@ export function DirectorLibrary() {
     setShowEditSubjectModal(null);
   };
 
-  const filteredWeeks = mallaCurricularModulo1.filter(
+  // Filtrar semanas usando mallaCurricularData en lugar de mallaCurricularModulo1
+  const filteredWeeks = mallaCurricularData.filter(
     w => w.eje_tematico.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         w.unidad_libro.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         w.horas.some(h => h.leccion.toLowerCase().includes(searchQuery.toLowerCase()) || h.enfoque.toLowerCase().includes(searchQuery.toLowerCase()))
+    w.unidad_libro.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    w.horas.some(h => h.leccion.toLowerCase().includes(searchQuery.toLowerCase()) || h.enfoque.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <div className="space-y-12 animate-in fade-in duration-500 font-sans">
-      
       {/* HEADER EXCLUSIVO */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 border-b border-white/5 text-left">
         <div>
@@ -937,12 +984,11 @@ export function DirectorLibrary() {
             </span>
           </div>
           <h1 className="text-3xl md:text-5xl font-black text-white bevel-text uppercase tracking-tighter">
-             BIBLIOTECA <span className="text-[#DEFF9A]">DIRECTIVA</span>
+            BIBLIOTECA <span className="text-[#DEFF9A]">DIRECTIVA</span>
           </h1>
           <p className="text-white/40 text-xs md:text-sm font-medium mt-1 leading-relaxed max-w-2xl text-left">
             Sube planes de estudio (.JSON) y manuales técnicos oficiales (.PDF) de forma segura o pre-asigna docentes a la estructura curricular reticular.
           </p>
-
           <div className="flex items-center gap-2 mt-4 text-[9px] font-mono text-white/40 uppercase tracking-widest bg-white/[0.02] px-4 py-2 rounded-xl inline-flex border border-white/5">
             <span className="text-[#DEFF9A]/80">Biblioteca Oficial</span>
             <span className="text-white/20">➔</span>
@@ -951,7 +997,6 @@ export function DirectorLibrary() {
             <span className="text-cyan-400 font-bold">{activeSubTab}</span>
           </div>
         </div>
-
         <div className="flex items-center gap-4 shrink-0">
           <div className="px-5 py-2.5 rounded-2xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 flex items-center gap-3">
             <Award size={16} className="text-[#DEFF9A]" />
@@ -996,7 +1041,6 @@ export function DirectorLibrary() {
 
       {/* RENDER COMPONENT TABS */}
       <AnimatePresence mode="wait">
-        
         {/* TAB 1: PLAN DE ESTUDIO (18 WEEKS ACCORDION + TOEFL HABILIDADES) */}
         {activeSubTab === 'Plan de Estudio' && (
           <motion.div 
@@ -1020,13 +1064,12 @@ export function DirectorLibrary() {
                   Estructuras de planeación que integran la gramática internacional TOEFL iBT con el vocabulario técnico de sistemas de vanguardia, ordenados por temporalidad académica.
                 </p>
               </div>
-              
               <div className="flex flex-wrap gap-3 w-full xl:w-auto">
                 <button
                   type="button"
                   onClick={() => {
                     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-                      JSON.stringify(mallaCurricularModulo1, null, 2)
+                      JSON.stringify(mallaCurricularData, null, 2)
                     )}`;
                     const downloadAnchor = document.createElement('a');
                     downloadAnchor.setAttribute("href", jsonString);
@@ -1056,7 +1099,6 @@ export function DirectorLibrary() {
                   Aísla los temas del año en carpetas
                 </span>
               </div>
-              
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {[
                   { key: 'Semestre 01', level: "A1.1 Principiante", focus: "Identificación de Datos Clave" },
@@ -1081,16 +1123,13 @@ export function DirectorLibrary() {
                           : 'bg-black/30 hover:bg-white/[0.03] border-white/5 hover:border-white/12 text-white/55 hover:text-white'
                       }`}
                     >
-                      {/* Folder Accent tabs */}
                       <div className={`absolute top-0 left-4 w-10 h-[3px] rounded-b-full transition-all ${isSelected ? 'bg-[#DEFF9A]' : 'bg-transparent group-hover:bg-white/20'}`} />
-                      
                       <div className="flex flex-col items-center gap-1 mt-1">
                         <span className={`text-[8.5px] font-mono tracking-widest font-black uppercase ${isSelected ? 'text-[#DEFF9A]' : 'text-white/30 group-hover:text-white/40'}`}>
                           {sem.key}
                         </span>
                         <Folder size={22} className={`transition-transform duration-300 ${isSelected ? 'text-[#DEFF9A] scale-110' : 'text-white/20 group-hover:scale-105'}`} />
                       </div>
-
                       <div className="space-y-0.5 mt-1">
                         <p className="text-[10.5px] font-black uppercase tracking-tight leading-tight">
                           {sem.level.split(' ')[0]}
@@ -1115,7 +1154,6 @@ export function DirectorLibrary() {
                   Métricas reguladoras esenciales para el plan estratégico de inglés bilingüe.
                 </p>
               </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 {toeflSkills.map((skill) => {
                   const Icon = skill.icon;
@@ -1134,7 +1172,6 @@ export function DirectorLibrary() {
                         </div>
                         <p className="text-white/65 text-[10px] leading-relaxed line-clamp-3">{skill.description}</p>
                       </div>
-                      
                       <div className="pt-3 border-t border-white/5 space-y-1.5 shrink-0">
                         <div className="flex justify-between items-center">
                           <span className="text-white/30 text-[7px] font-black uppercase">KPI Mínimo</span>
@@ -1165,12 +1202,15 @@ export function DirectorLibrary() {
                     />
                   </div>
                   <p className="text-[10px] font-black text-white/30 uppercase tracking-widest shrink-0">
-                    {filteredWeeks.length} de 18 semanas curriculares
+                    {isLoadingMalla ? 'Cargando...' : `${filteredWeeks.length} de ${mallaCurricularData.length} semanas curriculares`}
                   </p>
                 </div>
-
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar text-left">
-                  {filteredWeeks.length === 0 ? (
+                  {isLoadingMalla ? (
+                    <div className="p-12 text-center rounded-2xl border border-dashed border-white/5 text-white/30 font-black text-xs uppercase tracking-widest">
+                      Cargando malla curricular desde Google Sheets...
+                    </div>
+                  ) : filteredWeeks.length === 0 ? (
                     <div className="p-12 text-center rounded-2xl border border-dashed border-white/5 text-white/30 font-black text-xs uppercase tracking-widest">
                       No se encontraron semanas que coincidan con la búsqueda
                     </div>
@@ -1206,7 +1246,6 @@ export function DirectorLibrary() {
                               </p>
                             </div>
                           </div>
-                          
                           <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                             {openWeeks[week.semana] ? (
                               <ChevronUp size={16} className="text-[#DEFF9A]" />
@@ -1215,7 +1254,6 @@ export function DirectorLibrary() {
                             )}
                           </div>
                         </button>
-
                         <AnimatePresence initial={false}>
                           {openWeeks[week.semana] && (
                             <motion.div
@@ -1236,7 +1274,6 @@ export function DirectorLibrary() {
                                     {week.kpi}
                                   </span>
                                 </div>
-
                                 {/* Horas de clase desglose interactivo */}
                                 <div className="space-y-3">
                                   <h5 className="text-white/30 text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 matches-title">
@@ -1273,8 +1310,8 @@ export function DirectorLibrary() {
             </GlassCard>
           </motion.div>
         )}
-
-        {/* TAB 2: CARGAS & ARCHIVOS (HYBRID LOADER ZONE + DETAILED CONSOLE LOGS) */}
+        
+        {/* TAB 2: CARGAS & ARCHIVOS */}
         {activeSubTab === 'Cargas & Archivos' && (
           <motion.div 
             key="cargas_archivos_tab"
@@ -1288,7 +1325,6 @@ export function DirectorLibrary() {
             <div className="lg:col-span-7 space-y-8 text-left">
               <GlassCard title="Gestión de Carga de Archivos" icon={UploadCloud} accent="green">
                 <div className="space-y-6 text-left">
-                  
                   {/* Hybrid Selection (JSON, PDF, Plain TEXT) */}
                   <div className="flex flex-wrap bg-black/45 border border-white/5 p-1 rounded-2xl gap-1">
                     {([
@@ -1314,7 +1350,6 @@ export function DirectorLibrary() {
                       </button>
                     ))}
                   </div>
-
                   {activeUploadTab !== 'PLAIN' ? (
                     <div className="space-y-4">
                       <p className="text-white/40 text-[9px] uppercase font-bold tracking-widest leading-normal mb-2">
@@ -1324,7 +1359,6 @@ export function DirectorLibrary() {
                           <>Pestaña <span className="text-cyan-400 font-black">PDF</span> activa: Solo se permite cargar manuales oficiales Teclingo <span className="text-cyan-400 font-mono">.pdf</span>.</>
                         )}
                       </p>
-
                       {/* Drag & Drop Area */}
                       <div 
                         onDragEnter={handleDrag}
@@ -1345,12 +1379,10 @@ export function DirectorLibrary() {
                           onChange={handleFileChange}
                           className="hidden"
                         />
-                        
                         <div className="flex flex-col items-center justify-center gap-4">
                           <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/5 text-white/30">
                             <UploadCloud size={24} className="text-[#DEFF9A]" />
                           </div>
-                          
                           <div>
                             <h4 className="text-white font-black text-[11px] uppercase mb-1">
                               Arrastra tu {activeUploadTab === 'JSON' ? 'Syllabus estructurador (.json)' : 'Oficio oficial (.pdf)'}
@@ -1369,7 +1401,6 @@ export function DirectorLibrary() {
                           {plainText.length.toLocaleString()} / 15,000 carac.
                         </span>
                       </div>
-
                       <textarea
                         rows={6}
                         value={plainText}
@@ -1385,7 +1416,6 @@ export function DirectorLibrary() {
                         className="w-full bg-black/40 border border-white/5 rounded-3xl p-4 text-xs text-white placeholder-white/20 focus:outline-none focus:border-[#DEFF9A]/30 transition-colors resize-none font-mono custom-scrollbar text-left"
                         placeholder="// Pega aquí todo el texto obtenido del manual oficial para que el procesador semántico Teclingo extraiga e indexe la planeación correspondiente..."
                       />
-
                       {plainText.length > 15000 && (
                         <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-00 space-y-1 block text-left">
                           <span className="text-[9px] font-black uppercase tracking-widest bg-red-400 text-black px-1.5 py-0.5 rounded inline-block mb-1">
@@ -1396,7 +1426,6 @@ export function DirectorLibrary() {
                           </p>
                         </div>
                       )}
-
                       <div className="flex justify-end mt-2">
                         <button
                           type="button"
@@ -1409,7 +1438,6 @@ export function DirectorLibrary() {
                       </div>
                     </div>
                   )}
-
                   {/* Feedback UI Messages */}
                   <div className="space-y-4">
                     {errorCode && (
@@ -1425,10 +1453,8 @@ export function DirectorLibrary() {
                       </div>
                     )}
                   </div>
-
                 </div>
               </GlassCard>
-
               {/* Realtime Express Multer Simulator Terminal */}
               <GlassCard title="Middleware Server Logs — Sandbox de Validaciones" icon={Terminal} accent="cyan">
                 <div className="space-y-4">
@@ -1436,7 +1462,6 @@ export function DirectorLibrary() {
                     <span>EXPRESS MULTER ENGINE VALIDATOR</span>
                     <span className="font-mono text-cyan-400 font-bold">STATUS: STANDBY</span>
                   </div>
-                  
                   <div className="bg-black/85 rounded-2xl border border-white/5 p-6 font-mono text-[10.5px] space-y-2.5 max-h-[220px] overflow-y-auto custom-scrollbar text-left">
                     {consoleLogs.length === 0 ? (
                       <p className="text-white/20 italic text-left">// Sube un archivo (.pdf / .json) o pastea texto en el cargador híbrido para auditar el flujo del servidor en tiempo real...</p>
@@ -1458,7 +1483,6 @@ export function DirectorLibrary() {
                 </div>
               </GlassCard>
             </div>
-
             {/* Right Column: Uploaded Documents in database */}
             <div className="lg:col-span-12 xl:col-span-5 space-y-8 text-left">
               <GlassCard title="Archivos Registrados en Biblioteca" icon={Database} accent="cyan">
@@ -1467,7 +1491,6 @@ export function DirectorLibrary() {
                     <span>Sincronizados en Firestore local</span>
                     <span className="font-mono font-bold">Total: {uploadedFiles.length} docs</span>
                   </div>
-
                   {uploadedFiles.length === 0 ? (
                     <div className="py-16 text-center border border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center gap-4">
                       <FileText size={32} className="text-white/10" />
@@ -1502,7 +1525,6 @@ export function DirectorLibrary() {
                               </div>
                             </div>
                           </div>
-
                           <button 
                             type="button"
                             onClick={() => handleDeleteFile(doc.id, doc.name)}
@@ -1515,19 +1537,17 @@ export function DirectorLibrary() {
                       ))}
                     </div>
                   )}
-
                   <div className="pt-4 border-t border-white/5 flex justify-between items-center text-[8px] font-black uppercase tracking-widest text-white/30 font-mono">
                     <span>Estado Almacenamiento</span>
                     <span>1.6 MB / 100 MB de Cuota Escolar</span>
                   </div>
-
                 </div>
               </GlassCard>
             </div>
           </motion.div>
         )}
 
-        {/* TAB 3: LIBRO VIRTUAL MAESTRO (CLASSROOM PORTAL PAGE LAYOUT) */}
+        {/* TAB 3: LIBRO VIRTUAL MAESTRO */}
         {activeSubTab === 'Libro Virtual Maestro' && (
           <motion.div 
             key="libro_virtual_tab"
@@ -1537,11 +1557,11 @@ export function DirectorLibrary() {
             transition={{ duration: 0.2 }}
             className="space-y-8 text-left"
           >
-            <LibroVirtualDirectorCompleto />
+            <LibroVirtual role="director" lessonId="N1-C01" />
           </motion.div>
         )}
 
-        {/* TAB 4: ESTRUCTURA RETICULAR (CAREERS & SUBJECTS MANAGER) */}
+        {/* TAB 4: ESTRUCTURA RETICULAR */}
         {activeSubTab === 'Estructura Reticular' && (
           <motion.div 
             key="estructura_reticular_tab"
@@ -1557,7 +1577,6 @@ export function DirectorLibrary() {
                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight">CATÁLOGO DE ASIGNATURAS</h2>
                 <p className="text-white/40 text-[11px] font-medium uppercase mt-1">Cimientos del ERP: Define la carga reticular antes de armar el horario.</p>
               </div>
-              
               <button
                 type="button"
                 onClick={() => setShowAddCareerModal(true)}
@@ -1566,7 +1585,6 @@ export function DirectorLibrary() {
                 <Plus size={14} strokeWidth={3} /> Agregar Carrera
               </button>
             </div>
-
             <div className="space-y-6">
               {careers.length === 0 ? (
                 <div className="p-12 text-center border border-dashed border-white/5 rounded-3xl">
@@ -1579,12 +1597,10 @@ export function DirectorLibrary() {
                   const totalHours = career.subjects.reduce((sum, s) => sum + s.hours, 0);
                   const limitHours = career.limitHours;
                   const hoursLeft = limitHours - totalHours;
-                  
                   return (
                     <div key={career.id}>
                       <GlassCard>
                         <div className="p-6 md:p-8 space-y-6 text-left">
-                        
                           {/* Career Header metadata */}
                           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 text-left">
                             <div className="flex items-center gap-4 text-left">
@@ -1595,7 +1611,6 @@ export function DirectorLibrary() {
                               >
                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                               </button>
-                              
                               <div className="text-left">
                                 <div className="flex items-center gap-3">
                                   <h3 className="text-white text-base md:text-xl font-black uppercase tracking-tight text-left">
@@ -1629,7 +1644,6 @@ export function DirectorLibrary() {
                                 </span>
                               </div>
                             </div>
-
                             {/* Limit values indicators */}
                             <div className="flex items-center gap-4 flex-wrap">
                               <div className="flex items-center gap-3 bg-black/40 border border-white/5 rounded-2xl px-4 py-2 text-xs">
@@ -1639,7 +1653,6 @@ export function DirectorLibrary() {
                                   <span className="text-[9px] text-white/30 uppercase">HRS</span>
                                 </div>
                               </div>
-
                               {hoursLeft > 0 ? (
                                 <div className="flex items-center gap-3 bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-2xl px-5 py-2.5 text-left">
                                   <AlertTriangle size={14} className="animate-pulse shrink-0" />
@@ -1667,7 +1680,6 @@ export function DirectorLibrary() {
                               )}
                             </div>
                           </div>
-
                           <AnimatePresence initial={false}>
                             {isExpanded && (
                               <motion.div
@@ -1681,7 +1693,6 @@ export function DirectorLibrary() {
                                   <span>Asignatura / Clave</span>
                                   <span>Carga Horaria</span>
                                 </div>
-
                                 <div className="space-y-3">
                                   {career.subjects.length === 0 ? (
                                     <p className="text-center py-6 text-white/20 italic text-xs">No hay asignaturas en este plan de carrera.</p>
@@ -1706,12 +1717,10 @@ export function DirectorLibrary() {
                                             </span>
                                           </div>
                                         </div>
-
                                         <div className="flex items-center gap-4 shrink-0">
                                           <div className="bg-black/40 border border-white/5 rounded-xl px-3 py-1.5 text-[10px] font-mono text-white/80 shrink-0 font-bold">
                                             <span className="font-black text-xs text-white mr-1">{sub.hours}</span> HRS
                                           </div>
-
                                           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button 
                                               type="button"
@@ -1735,7 +1744,6 @@ export function DirectorLibrary() {
                                     ))
                                   )}
                                 </div>
-
                                 <button
                                   type="button"
                                   onClick={() => setShowAddSubjectModal(career.id)}
@@ -1746,7 +1754,6 @@ export function DirectorLibrary() {
                               </motion.div>
                             )}
                           </AnimatePresence>
-
                         </div>
                       </GlassCard>
                     </div>
@@ -1757,7 +1764,7 @@ export function DirectorLibrary() {
           </motion.div>
         )}
 
-        {/* TAB 5: DISTRIBUCIÓN ACADÉMICA (TEACHERS ASSIGNMENT PANEL CONSOLE) */}
+        {/* TAB 5: DISTRIBUCIÓN ACADÉMICA */}
         {activeSubTab === 'Distribución Académica' && (
           <motion.div 
             key="distribucion_academica_tab"
@@ -1774,14 +1781,11 @@ export function DirectorLibrary() {
                   <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight">DISTRIBUCIÓN ACADÉMICA</h2>
                   <p className="text-white/40 text-[11px] font-medium uppercase mt-1">Pre-asigna los docentes calificados a sus asignaturas antes del cronograma semanal.</p>
                 </div>
-
                 <div className="px-5 py-3 rounded-2xl bg-white/[0.02] border border-white/5 text-left md:text-right">
                   <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block mb-1">Carga Académica Semestre</span>
                   <span className="text-xs font-mono font-black text-cyan-400">Total: 24 horas registradas</span>
                 </div>
               </div>
-
-              {/* Little Tech dialog help */}
               <div className="mt-6 p-4 rounded-2xl bg-black/45 border border-cyan-500/10 flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 shrink-0">
                   <span>🤖</span>
@@ -1800,8 +1804,6 @@ export function DirectorLibrary() {
                 </div>
               </div>
             </div>
-
-            {/* Matrix distribution control panel */}
             <div className="bg-black/35 border border-white/5 rounded-3xl p-6 text-left">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2 border-b border-white/5">
                 <div className="text-[10px] font-mono font-black text-white/30 uppercase tracking-widest pl-2">
@@ -1811,18 +1813,15 @@ export function DirectorLibrary() {
                   DOCENTE PRE-ASIGNADO (FILTRO POR ESPECIALIDAD)
                 </div>
               </div>
-
               <div className="space-y-3.5 mt-4">
                 {careers[0]?.subjects.map((sub) => {
                   const preassignedTeacherId = distAssignments[sub.code] || '';
                   const qualifiedIds = subjectQualifiedTeachers[sub.code] || [];
-                  
                   return (
                     <div 
                       key={sub.code}
                       className="grid grid-cols-1 md:grid-cols-2 items-center gap-4 bg-black/40 border border-white/5 p-4 rounded-2xl hover:border-white/10 transition-all group"
                     >
-                      {/* Left: subject details */}
                       <div className="flex justify-between items-center pr-2">
                         <div className="space-y-1 text-left">
                           <div className="flex items-center gap-2">
@@ -1831,13 +1830,10 @@ export function DirectorLibrary() {
                           </div>
                           <p className="text-white/40 text-[9px] uppercase tracking-wider font-bold">Plan ISC • 2º Semestre</p>
                         </div>
-                        
                         <div className="px-2.5 py-1 rounded bg-[#0b1219] border border-white/5 font-mono text-[10px] font-black text-[#DEFF9A]">
                           {sub.hours} <span className="text-[8px] text-white/40 uppercase font-sans">hrs</span>
                         </div>
                       </div>
-
-                      {/* Right: qualified docent select dropdown */}
                       <div className="flex gap-2 items-center">
                         <div className="flex-1 relative">
                           <select
@@ -1861,8 +1857,6 @@ export function DirectorLibrary() {
                             ▼
                           </div>
                         </div>
-
-                        {/* Status badge sign */}
                         {preassignedTeacherId ? (
                           <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col items-center justify-center text-emerald-400" title="Perfil Profesional Acreditado">
                             <span className="text-sm font-bold">✓</span>
@@ -1877,18 +1871,16 @@ export function DirectorLibrary() {
                   );
                 })}
               </div>
-
-              {/* Action output validation */}
               <div className="mt-8 pt-6 border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-left">
                 <span className="text-white/30 text-[9px] font-sans font-bold uppercase tracking-widest text-center sm:text-left leading-normal max-w-md">
-                  🔒 Las asignaciones de docentes se consolidan y validan automáticamente en el sistema de control escolar.
+                   Las asignaciones de docentes se consolidan y validan automáticamente en el sistema de control escolar.
                 </span>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* TAB 6: CREADOR DE EXÁMENES (TEST MAKER) */}
+        {/* TAB 6: CREADOR DE EXÁMENES */}
         {activeSubTab === 'Creador de Exámenes' && (
           <motion.div
             key="test_maker_tab"
@@ -1897,7 +1889,6 @@ export function DirectorLibrary() {
             exit={{ opacity: 0, y: -15 }}
             className="space-y-8 text-left animate-in duration-300"
           >
-            {/* HERO INDICATOR BLOCK */}
             <div className="p-6 rounded-3xl bg-gradient-to-r from-cyan-950/20 to-emerald-950/20 border border-emerald-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="space-y-1">
                 <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[8px] font-mono font-black uppercase tracking-widest leading-none">
@@ -1908,7 +1899,6 @@ export function DirectorLibrary() {
                   Modela evaluaciones TOEFL alineadas de forma directa al plan académico bimestral. Arrastra reactivos al lienzo o selecciona reactivos generados por IA basados en la planeación curricular de la semana seleccionada.
                 </p>
               </div>
-
               <div className="flex gap-3">
                 <div className="px-4 py-3 bg-[#0b1219]/90 border border-white/5 rounded-2xl text-center">
                   <span className="block text-[8px] text-white/30 uppercase font-bold">Lienzo Actual</span>
@@ -1922,13 +1912,9 @@ export function DirectorLibrary() {
                 </div>
               </div>
             </div>
-
             <div className="p-6 rounded-3xl bg-black/45 border border-white/5 space-y-6 text-left">
               <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 pb-2">
-                
-                {/* Selectores de Grado y Grupo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                  {/* Semestre / Grado Malla */}
                   <div className="space-y-1.5">
                     <label className="block text-[8px] font-mono font-black text-white/40 uppercase tracking-widest pl-0.5">Semestre / Grado Malla</label>
                     <select
@@ -1944,8 +1930,6 @@ export function DirectorLibrary() {
                       <option value="Semestre 06">6to Semestre - Advanced C1</option>
                     </select>
                   </div>
-
-                  {/* Grupo Destino (Distribución) */}
                   <div className="space-y-1.5">
                     <label className="block text-[8px] font-mono font-black text-white/40 uppercase tracking-widest pl-0.5">Grupo Destino (Distribución)</label>
                     <select
@@ -1962,8 +1946,6 @@ export function DirectorLibrary() {
                     </select>
                   </div>
                 </div>
-
-                {/* BOTÓN SUPREMO DE AUTOMATIZACIÓN DE EXAMEN POR IA */}
                 <div className="xl:pt-4 shrink-0">
                   <button
                     type="button"
@@ -1990,13 +1972,10 @@ export function DirectorLibrary() {
                   </button>
                 </div>
               </div>
-
-              {/* CONTENEDOR DINÁMICO DE DIAGNÓSTICO ACADÉMICO EN VIVO */}
               {(() => {
                 const diagnosis = mockGroupDiagnoses[examGroup] || mockGroupDiagnoses['all'];
                 return (
                   <div className="p-4.5 rounded-2xl bg-emerald-950/10 border border-emerald-500/10 grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
-                    {/* Badge & Group Name */}
                     <div className="md:col-span-3 space-y-1">
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-[7px] font-mono font-black text-emerald-400 uppercase tracking-widest leading-none">
                         ● Diagnóstico en vivo
@@ -2009,8 +1988,6 @@ export function DirectorLibrary() {
                         <span className="text-pink-300/80 font-mono font-bold uppercase">{diagnosis.focusArea}</span>
                       </p>
                     </div>
-
-                    {/* Promedio Grupal */}
                     <div className="md:col-span-3 space-y-1 bg-black/25 p-3 rounded-xl border border-white/5">
                       <div className="flex justify-between items-center text-[8px] font-mono text-white/30 uppercase font-black">
                         <span>Promedio Grupal</span>
@@ -2020,8 +1997,6 @@ export function DirectorLibrary() {
                         <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${diagnosis.avgGrade}%` }} />
                       </div>
                     </div>
-
-                    {/* Porcentaje de Conocimiento Escrito */}
                     <div className="md:col-span-3 space-y-1 bg-black/25 p-3 rounded-xl border border-white/5">
                       <div className="flex justify-between items-center text-[8px] font-mono text-white/30 uppercase font-black">
                         <span>Conocimiento Escrito</span>
@@ -2031,8 +2006,6 @@ export function DirectorLibrary() {
                         <div className="h-full bg-cyan-400 rounded-full" style={{ width: `${diagnosis.writtenLevel}%` }} />
                       </div>
                     </div>
-
-                    {/* Nivel de Ansiedad SafeZone */}
                     <div className="md:col-span-3 space-y-1 bg-black/25 p-3 rounded-xl border border-white/5">
                       <div className="flex justify-between items-center text-[8px] font-mono text-white/30 uppercase font-black">
                         <span>Ansiedad SafeZone</span>
@@ -2051,14 +2024,8 @@ export function DirectorLibrary() {
                 );
               })()}
             </div>
-
-            {/* SECTIONS LAYOUT */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              
-              {/* --- COLUMNA 1: PALETA DE REACTIVOS & SYLLABUS SUGGESTIONS (col-span-4) --- */}
               <div className="lg:col-span-4 space-y-6">
-                
-                {/* A. PALETA DE COMPONENTES INTERACTIVOS */}
                 <GlassCard className="p-5 border-white/5 bg-[#0b1219]/40 relative overflow-hidden">
                   <div className="absolute top-0 left-5 w-12 h-[2px] bg-cyan-400" />
                   <div className="flex items-center gap-2.5 mb-4">
@@ -2070,9 +2037,7 @@ export function DirectorLibrary() {
                   <p className="text-white/40 text-[10px] leading-relaxed mb-4">
                     Arrastra los bloques de tipo de pregunta al lienzo de la derecha, o haz clic en el botón <b>(+) Añadir</b> para insertarlos al borrador.
                   </p>
-
                   <div className="space-y-3">
-                    {/* Multiple choice element */}
                     <div
                       draggable
                       onDragStart={(e) => {
@@ -2100,8 +2065,6 @@ export function DirectorLibrary() {
                         + Añadir
                       </button>
                     </div>
-
-                    {/* True/False element */}
                     <div
                       draggable
                       onDragStart={(e) => {
@@ -2129,8 +2092,6 @@ export function DirectorLibrary() {
                         + Añadir
                       </button>
                     </div>
-
-                    {/* Fill gaps element */}
                     <div
                       draggable
                       onDragStart={(e) => {
@@ -2158,8 +2119,6 @@ export function DirectorLibrary() {
                         + Añadir
                       </button>
                     </div>
-
-                    {/* Speaking fluent element */}
                     <div
                       draggable
                       onDragStart={(e) => {
@@ -2189,8 +2148,6 @@ export function DirectorLibrary() {
                     </div>
                   </div>
                 </GlassCard>
-
-                {/* B. SYLLABUS DIRECTIVE AI SUGGESTIONS ENGINE */}
                 <GlassCard className="p-5 border-white/5 bg-[#0b1219]/40 text-left">
                   <div className="flex items-center gap-2.5 mb-3">
                     <span className="p-1.5 rounded-lg bg-amber-400/10 text-amber-400">
@@ -2201,9 +2158,7 @@ export function DirectorLibrary() {
                   <p className="text-white/40 text-[9.5px] leading-relaxed mb-4">
                     Selecciona una unidad de la malla y expande reactivos previamente sugeridos y alineados a las lecciones de esa semana:
                   </p>
-
                   <div className="space-y-4">
-                    {/* Selector of week */}
                     <div>
                       <label className="block text-[8px] font-mono font-black text-white/30 uppercase tracking-widest mb-1.5">Semana de la Planeación Académica</label>
                       <select
@@ -2211,20 +2166,17 @@ export function DirectorLibrary() {
                         onChange={(e) => setSelectedWeekForSyllabusTemplate(Number(e.target.value))}
                         className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white uppercase"
                       >
-                        {mallaCurricularModulo1.map((w) => (
+                        {mallaCurricularData.map((w) => (
                           <option key={w.semana} value={w.semana} className="bg-[#0b1219]">
                             Semana 0{w.semana} • {w.unidad_libro.substring(0, 30)}...
                           </option>
                         ))}
                       </select>
                     </div>
-
-                    {/* Precomputed options to automatically tap and insert */}
                     <div className="space-y-2.5">
                       <p className="text-[8px] font-mono font-black text-amber-300/80 uppercase tracking-widest leading-none mt-2">
                         ➔ REACTIVOS RECOMENDADOS (SABERES DE SEMANA 0{selectedWeekForSyllabusTemplate})
                       </p>
-
                       {(() => {
                         const recs = {
                           1: [
@@ -2300,7 +2252,6 @@ export function DirectorLibrary() {
                             points: 20
                           }
                         ];
-
                         return recs.map((rec, i) => (
                           <div 
                             key={i}
@@ -2326,11 +2277,7 @@ export function DirectorLibrary() {
                   </div>
                 </GlassCard>
               </div>
-
-              {/* --- COLUMNA 2: LIENZO INTERACTIVO DE EXAMEN (col-span-5) --- */}
               <div ref={fileInputRef as any} className="lg:col-span-5 space-y-6">
-                
-                {/* CANVAS BOARD */}
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -2351,13 +2298,11 @@ export function DirectorLibrary() {
                       : 'border-white/5'
                   }`}
                 >
-                  {/* Neon border shine when drag and drop is active */}
                   {draggedItemType && !isDraggingOverCanvas && (
                     <div className="absolute inset-2 border-2 border-dashed border-cyan-400/30 rounded-[2rem] pointer-events-none animate-pulse flex items-center justify-center">
                       <p className="text-cyan-400 text-[10px] font-mono font-black uppercase tracking-widest text-center">SOLTAR BLOQUE AQUÍ</p>
                     </div>
                   )}
-
                   <div className="flex items-center justify-between border-b border-white/5 pb-4.5 mb-5 text-left">
                     <div>
                       <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
@@ -2370,7 +2315,6 @@ export function DirectorLibrary() {
                       </h3>
                       <p className="text-white/40 text-[9px] mt-0.5 uppercase tracking-wider">Editor interactivo de reactivos</p>
                     </div>
-
                     <button
                       type="button"
                       onClick={() => {
@@ -2384,10 +2328,7 @@ export function DirectorLibrary() {
                       Limpiar todo
                     </button>
                   </div>
-
-                  {/* SCROLLABLE INNER BOARD QUESTIONS DRAFT */}
                   <div className="space-y-5 max-h-[640px] overflow-y-auto pr-1">
-                    
                     {canvasQuestions.length === 0 ? (
                       <div className="py-20 text-center space-y-4 rounded-3xl border border-dashed border-white/5 bg-white/[0.01]">
                         <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/30 mx-auto">
@@ -2406,14 +2347,10 @@ export function DirectorLibrary() {
                           key={q.id}
                           className="p-5 rounded-3xl bg-[#0b1219]/70 border border-white/5 relative group/item hover:border-white/10 transition-all text-left"
                         >
-                          {/* FLOATING INDEX BADGE */}
                           <div className="absolute top-4 left-4 h-6 px-2.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-[10px] font-mono font-black flex items-center justify-center leading-none">
                             R_{idx + 1}
                           </div>
-
-                          {/* ACTION BUTTONS (MOVE & DELETE) */}
                           <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                            {/* Move Up */}
                             {idx > 0 && (
                               <button
                                 type="button"
@@ -2430,8 +2367,6 @@ export function DirectorLibrary() {
                                 ▲
                               </button>
                             )}
-
-                            {/* Move Down */}
                             {idx < canvasQuestions.length - 1 && (
                               <button
                                 type="button"
@@ -2448,8 +2383,6 @@ export function DirectorLibrary() {
                                 ▼
                               </button>
                             )}
-
-                            {/* Detach option */}
                             <button
                               type="button"
                               onClick={() => {
@@ -2461,8 +2394,6 @@ export function DirectorLibrary() {
                               <X size={11} />
                             </button>
                           </div>
-
-                          {/* QUESTION METADATA ROW */}
                           <div className="pl-9 pr-24 flex items-center gap-3.5 mb-3.5 mt-0.5">
                             <span className={`px-2 py-0.5 rounded font-mono text-[8px] font-black uppercase tracking-wider ${
                               q.type === 'multiple-choice' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/20' :
@@ -2472,8 +2403,6 @@ export function DirectorLibrary() {
                             }`}>
                               {q.type}
                             </span>
-
-                            {/* Points selector */}
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-[8px] font-mono text-white/30 uppercase font-black">PESO:</span>
                               <input
@@ -2491,10 +2420,7 @@ export function DirectorLibrary() {
                               <span className="text-[8.5px] font-mono text-white/40">pts</span>
                             </div>
                           </div>
-
-                          {/* INLINE EDITABLE BODY */}
                           <div className="space-y-3.5 mt-2">
-                            {/* Stimulus title */}
                             {q.type !== 'speaking' && (
                               <div className="space-y-1">
                                 <span className="block text-[7.5px] font-mono text-white/30 uppercase font-black tracking-widest pl-0.5">TEXTO REACCION O ENUNCIADO</span>
@@ -2510,8 +2436,6 @@ export function DirectorLibrary() {
                                 />
                               </div>
                             )}
-
-                            {/* Conditional Form fields depending on type */}
                             {q.type === 'multiple-choice' && (
                               <div className="space-y-2 pt-1 pl-1">
                                 <span className="block text-[7.5px] font-mono text-white/20 uppercase font-bold tracking-widest">OPCIONES DE RESPUESTA Y SELECCION DE CORRECTA</span>
@@ -2552,7 +2476,6 @@ export function DirectorLibrary() {
                                 </div>
                               </div>
                             )}
-
                             {q.type === 'true-false' && (
                               <div className="flex items-center gap-4.5 bg-black/45 px-4 py-2 rounded-2xl border border-white/5">
                                 <span className="text-white/30 text-[8px] font-mono font-black uppercase shrink-0">RESPUESTA CLAVE:</span>
@@ -2574,7 +2497,6 @@ export function DirectorLibrary() {
                                 </div>
                               </div>
                             )}
-
                             {q.type === 'fill-blanks' && (
                               <div className="p-3 bg-black/45 rounded-2xl border border-white/5 space-y-1.5">
                                 <span className="block text-[7.5px] font-mono text-white/30 uppercase font-black tracking-widest leading-none pl-0.5">TÉRMINO O RESPUESTA EXACTA REQUERIDA (ENTRE CORCHETES `[BLANK]` ARRIBA)</span>
@@ -2593,16 +2515,12 @@ export function DirectorLibrary() {
                                 </div>
                               </div>
                             )}
-
                             {q.type === 'speaking' && (
                               <div className="p-4 bg-black/55 border border-pink-500/10 rounded-2xl space-y-4 text-left">
-                                {/* Header / Badge */}
                                 <div className="flex items-center gap-2 border-b border-white/5 pb-2">
                                   <span className="text-pink-400">🎙️</span>
                                   <span className="text-[9px] font-mono font-black text-pink-400 uppercase tracking-wider">PRUEBA ORAL AI SPEAKING SETUP</span>
                                 </div>
-
-                                {/* Campo 1: TEXTO REACCIÓN O ENUNCIADO */}
                                 <div className="space-y-1">
                                   <span className="block text-[7.5px] font-mono text-white/40 uppercase font-black tracking-widest pl-0.5">
                                     TEXTO REACCIÓN O ENUNCIADO (Frase de lectura / Respuesta oral)
@@ -2618,9 +2536,7 @@ export function DirectorLibrary() {
                                     placeholder="Ej. Read aloud: 'Developing virtual communication interfaces requires solid subject pronoun compliance.'"
                                   />
                                 </div>
-
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {/* Campo 2: TIEMPO LÍMITE DE RESPUESTA */}
                                   <div className="space-y-1">
                                     <span className="block text-[7.5px] font-mono text-white/40 uppercase font-black tracking-widest pl-0.5">
                                       TIEMPO LÍMITE DE RESPUESTA
@@ -2638,8 +2554,6 @@ export function DirectorLibrary() {
                                       <option value="2 min">2 minutos (2 min) • TOEFL Long Answer</option>
                                     </select>
                                   </div>
-
-                                  {/* Campo 3: UMBRAL MÍNIMO DE PRECISIÓN (BRIDGE MATCH) */}
                                   <div className="space-y-1">
                                     <div className="flex justify-between items-center px-0.5">
                                       <span className="block text-[7.5px] font-mono text-white/40 uppercase font-black tracking-widest">
@@ -2668,8 +2582,6 @@ export function DirectorLibrary() {
                                     </div>
                                   </div>
                                 </div>
-
-                                {/* Fluency vocabulary target exact response / fallback keywords */}
                                 <div className="space-y-1 bg-pink-500/5 p-3 rounded-xl border border-pink-500/10">
                                   <span className="block text-[7.5px] font-mono text-white/40 uppercase font-black tracking-widest pl-0.5">
                                     VOCABULARIO TARGET O PALABRAS CLAVE DETECTADAS POR LA IA
@@ -2695,8 +2607,6 @@ export function DirectorLibrary() {
                       ))
                     )}
                   </div>
-
-                  {/* LIENZO SCORE INDICATOR */}
                   {canvasQuestions.length > 0 && (
                     <div className="mt-6 pt-5 border-t border-white/5 space-y-3">
                       <div className="flex items-center justify-between text-xs">
@@ -2712,8 +2622,6 @@ export function DirectorLibrary() {
                           }
                         })()}
                       </div>
-
-                      {/* Horizontal progress bar */}
                       <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
                         {(() => {
                           const score = canvasQuestions.reduce((acc, q) => acc + q.points, 0);
@@ -2731,11 +2639,7 @@ export function DirectorLibrary() {
                   )}
                 </div>
               </div>
-
-              {/* --- COLUMNA 3: AJUSTES DE REGISTRO & HISTORIAL (col-span-3) --- */}
               <div className="lg:col-span-3 space-y-6">
-                
-                {/* 1. PUBLICACION DETAILS PANEL */}
                 <GlassCard className="p-5 border-white/5 bg-[#0b1219]/40 text-left">
                   <div className="flex items-center gap-2.5 mb-4">
                     <span className="p-1.5 rounded-lg bg-emerald-400/10 text-emerald-400">
@@ -2743,8 +2647,6 @@ export function DirectorLibrary() {
                     </span>
                     <h3 className="text-xs font-black text-white uppercase tracking-wider">Consola de Publicación</h3>
                   </div>
-
-                  {/* SUCCESS ANIMATION DISPLAY IN-GRID */}
                   {isDistributedSuccess ? (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.9 }}
@@ -2763,7 +2665,6 @@ export function DirectorLibrary() {
                     </motion.div>
                   ) : (
                     <div className="space-y-4">
-                      {/* Title of evaluation */}
                       <div className="space-y-1.5">
                         <label className="block text-[8px] font-mono font-black text-white/30 uppercase tracking-widest mb-0.5">Título del Examen</label>
                         <input
@@ -2774,8 +2675,6 @@ export function DirectorLibrary() {
                           placeholder="TITULO DE LA PRUEBA"
                         />
                       </div>
-
-                      {/* Limit session duration */}
                       <div className="space-y-1.5">
                         <label className="block text-[8px] font-mono font-black text-white/30 uppercase tracking-widest mb-0.5">Duración Límite</label>
                         <select
@@ -2790,8 +2689,6 @@ export function DirectorLibrary() {
                           <option value={120}>120 Minutos - Reticular Evaluation</option>
                         </select>
                       </div>
-
-                      {/* THE LAUNCH BUTON */}
                       {(() => {
                         const totalPoints = canvasQuestions.reduce((acc, q) => acc + q.points, 0);
                         const isOverLimit = totalPoints > 100;
@@ -2815,8 +2712,6 @@ export function DirectorLibrary() {
                     </div>
                   )}
                 </GlassCard>
-
-                {/* 2. HISTORIAL DE EXAMENES CREADOS */}
                 <GlassCard className="p-5 border-white/5 bg-[#0b1219]/40 text-left">
                   <div className="flex items-center gap-2.5 mb-4 border-b border-white/5 pb-3">
                     <span className="p-1.5 rounded-lg bg-cyan-400/10 text-cyan-400">
@@ -2824,7 +2719,6 @@ export function DirectorLibrary() {
                     </span>
                     <h3 className="text-xs font-black text-white uppercase tracking-wider">Historial de Exámenes</h3>
                   </div>
-
                   <div className="space-y-3 max-h-[300px] overflow-y-auto">
                     {createdExams.length === 0 ? (
                       <p className="text-[10px] text-white/30 text-center py-6">Ningún examen publicado anteriormente.</p>
@@ -2846,14 +2740,12 @@ export function DirectorLibrary() {
                               ✕
                             </button>
                           </div>
-
                           <div className="grid grid-cols-2 gap-2 text-white/40 text-[9px] font-mono leading-none pt-1">
                             <div>GRUPO: <b className="text-white/70 uppercase">{(ex.group === 'all' || !ex.group) ? 'GLOBAL' : ex.group}</b></div>
                             <div>DURAC.: <b className="text-white/70">{ex.duration} Mins</b></div>
                             <div>ITEMS: <b className="text-[#DEFF9A]">{ex.questionCount}</b></div>
                             <div>VALOR: <b className="text-cyan-450 text-[#DEFF9A]">{ex.totalPoints} PTS</b></div>
                           </div>
-
                           <div className="text-white/20 text-[8px] font-mono uppercase text-right pt-1">
                             Publicado {ex.createdAt}
                           </div>
@@ -2862,18 +2754,13 @@ export function DirectorLibrary() {
                     )}
                   </div>
                 </GlassCard>
-
               </div>
-
             </div>
           </motion.div>
         )}
-
       </AnimatePresence>
 
-      {/* RENDER MODAL LAYOUTS */}
-      
-      {/* ADD CAREER OVERLAY MODAL */}
+      {/* MODALES */}
       <AnimatePresence>
         {showAddCareerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -2896,7 +2783,6 @@ export function DirectorLibrary() {
                   <X size={14} />
                 </button>
               </div>
-
               <form onSubmit={handleAddCareer} className="p-6 space-y-5 text-left">
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Nombre de la Carrera</label>
@@ -2909,7 +2795,6 @@ export function DirectorLibrary() {
                     className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500/50 transition-colors"
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45 font-bold">Clave / Plan ID</label>
@@ -2936,7 +2821,6 @@ export function DirectorLibrary() {
                     />
                   </div>
                 </div>
-
                 <div className="pt-4 flex justify-end gap-3 border-t border-white/5">
                   <button
                     type="button"
@@ -2958,7 +2842,6 @@ export function DirectorLibrary() {
         )}
       </AnimatePresence>
 
-      {/* ADD SUBJECT MANUAL OVERLAY MODAL */}
       <AnimatePresence>
         {showAddSubjectModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -2981,7 +2864,6 @@ export function DirectorLibrary() {
                   <X size={14} />
                 </button>
               </div>
-
               <form onSubmit={handleAddSubject} className="p-6 space-y-5 text-left">
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase tracking-widest text-[#9ca3af]">Nombre de la Asignatura</label>
@@ -2994,7 +2876,6 @@ export function DirectorLibrary() {
                     className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500/50 transition-colors"
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Clave de la Asignatura</label>
@@ -3036,7 +2917,6 @@ export function DirectorLibrary() {
                     </div>
                   </div>
                 </div>
-
                 <div className="pt-4 flex justify-end gap-3 border-t border-white/5 animate-in">
                   <button
                     type="button"
@@ -3058,7 +2938,6 @@ export function DirectorLibrary() {
         )}
       </AnimatePresence>
 
-      {/* EDIT CAREER MODAL OVERLAY */}
       <AnimatePresence>
         {showEditCareerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -3081,7 +2960,6 @@ export function DirectorLibrary() {
                   <X size={14} />
                 </button>
               </div>
-
               <form onSubmit={handleEditCareerSubmit} className="p-6 space-y-5 text-left">
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Nombre de la Carrera</label>
@@ -3093,7 +2971,6 @@ export function DirectorLibrary() {
                     className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500/50 transition-colors"
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45 font-bold">Clave / Plan ID</label>
@@ -3118,7 +2995,6 @@ export function DirectorLibrary() {
                     />
                   </div>
                 </div>
-
                 <div className="pt-4 flex justify-end gap-3 border-t border-white/5">
                   <button
                     type="button"
@@ -3140,7 +3016,6 @@ export function DirectorLibrary() {
         )}
       </AnimatePresence>
 
-      {/* EDIT SUBJECT MODAL OVERLAY */}
       <AnimatePresence>
         {showEditSubjectModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
@@ -3163,7 +3038,6 @@ export function DirectorLibrary() {
                   <X size={14} />
                 </button>
               </div>
-
               <form onSubmit={handleEditSubjectSubmit} className="p-6 space-y-5 text-left">
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase tracking-widest text-[#9ca3af]">Nombre de la Asignatura</label>
@@ -3178,7 +3052,6 @@ export function DirectorLibrary() {
                     className="w-full bg-black/40 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-cyan-500/50 transition-colors"
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black uppercase tracking-widest text-white/45">Clave (No Editable)</label>
@@ -3222,7 +3095,6 @@ export function DirectorLibrary() {
                     </div>
                   </div>
                 </div>
-
                 <div className="pt-4 flex justify-end gap-3 border-t border-white/5">
                   <button
                     type="button"
@@ -3243,7 +3115,13 @@ export function DirectorLibrary() {
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
+
+
+
+
+
+
+

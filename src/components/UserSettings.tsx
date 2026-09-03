@@ -44,7 +44,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { GlassCard } from './GlassCard';
 import { useAppContext, UserRole } from '../context/AppContext';
 import { ModuleManagement } from './ModuleManagement';
-import { guardarPerfil, obtenerPerfilCompleto, uploadAvatar } from '../services/identityService';
+import { guardarPerfil, obtenerPerfilCompleto, uploadAvatar, misGruposIngles, listarHorariosDisponiblesDocente } from '../services/identityService';
 
 export function UserSettings({ 
   role, 
@@ -62,7 +62,9 @@ export function UserSettings({
     setMaintenanceMode,
     identityEnabled,
     currentRole: contextRole,
-    userEmail
+    userEmail,
+    groups,
+    teachers,
   } = useAppContext();
   
   const effectiveRole = role || contextRole;
@@ -85,6 +87,12 @@ export function UserSettings({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Modal para agregar certificación
+  const [showCertModal, setShowCertModal] = useState(false);
+  const [newCertName, setNewCertName] = useState('');
+  const [newCertDate, setNewCertDate] = useState('');
+  const [newCertUrl, setNewCertUrl] = useState('');
 
   // Copiar código institucional al portapapeles
   const copiarCodigo = async () => {
@@ -114,6 +122,62 @@ export function UserSettings({
       setToastMessage('❌ No se pudo copiar. Cópialo manualmente.');
       setShowToast(true);
     }
+  };
+
+  // Agregar nueva certificación
+  const handleAddCertification = () => {
+    if (!newCertName.trim()) return;
+    const newCert = {
+      id: `CERT-${Date.now()}`,
+      name: newCertName.trim().toUpperCase(),
+      date: newCertDate || new Date().toISOString().slice(0, 10),
+      url: newCertUrl.trim() || undefined,
+    };
+    setTeacherData(prev => ({
+      ...prev,
+      certifications: [...prev.certifications, newCert],
+    }));
+    setIsDirty(true);
+    setShowCertModal(false);
+    setNewCertName('');
+    setNewCertDate('');
+    setNewCertUrl('');
+    setToastMessage('Certificación agregada. Guarda para sincronizar.');
+    setShowToast(true);
+  };
+
+  // Eliminar certificación
+  const handleDeleteCertification = (certId: string) => {
+    setTeacherData(prev => ({
+      ...prev,
+      certifications: prev.certifications.filter(c => c.id !== certId),
+    }));
+    setIsDirty(true);
+    setToastMessage('Certificación eliminada. Guarda para sincronizar.');
+    setShowToast(true);
+  };
+
+  // Descargar certificación
+  const handleDownloadCertification = (cert: { name: string; url?: string }) => {
+    if (cert.url) {
+      window.open(cert.url, '_blank');
+    } else {
+      setToastMessage('Esta certificación no tiene enlace adjunto.');
+      setShowToast(true);
+    }
+  };
+
+  // Calcular porcentaje de completitud del perfil
+  const calculateProfileCompletion = (): number => {
+    let filled = 0;
+    let total = 6;
+    if (teacherData.name) filled++;
+    if (teacherData.degree) filled++;
+    if (teacherData.phone) filled++;
+    if (teacherData.bio) filled++;
+    if (teacherData.years_of_experience > 0) filled++;
+    if (teacherData.certifications.length > 0) filled++;
+    return Math.round((filled / total) * 100);
   };
 
   useEffect(() => {
@@ -187,7 +251,7 @@ export function UserSettings({
         phone: String(perfil.phone ?? prev.phone ?? ''),
         bio: String(perfil.bio ?? prev.bio ?? ''),
         curp: (perfil.curp as string) ?? prev.curp,
-        employeeId: (perfil.student_id as string) ?? prev.employeeId,
+        employeeId: (perfil.id_empleado as string) ?? prev.employeeId,
         id_empleado: (perfil.id_empleado as string) ?? prev.id_empleado,
         birthDate: normDate(perfil.birth_date) || prev.birthDate,
         degree: (perfil.degree as string) ?? prev.degree,
@@ -207,6 +271,7 @@ export function UserSettings({
         dir_modalidad: (perfil.dir_modalidad as string) ?? prev.dir_modalidad,
         specialties: (() => { try { const v = perfil.specialties; if (Array.isArray(v)) return v; if (typeof v === 'string' && v) return JSON.parse(v); return prev.specialties; } catch { return prev.specialties; } })(),
         certifications: (() => { try { const v = perfil.certifications; if (Array.isArray(v)) return v; if (typeof v === 'string' && v) return JSON.parse(v); return prev.certifications; } catch { return prev.certifications; } })(),
+        years_of_experience: (perfil.years_of_experience as number) ?? prev.years_of_experience,
       }));
     } else if (effectiveRole === 'DIRECTOR') {
       setDirData(prev => ({
@@ -323,7 +388,8 @@ export function UserSettings({
     dir_carreras: [] as string[],
     dir_turnos: [] as string[],
     dir_modalidad: '',
-    certifications: [] as { id: string; name: string; date: string }[]
+    certifications: [] as { id: string; name: string; date: string; url?: string }[],
+    years_of_experience: 0,
   });
 
   // Student Data — vacío por defecto; se hidrata desde el Data Lake.
@@ -386,6 +452,91 @@ export function UserSettings({
     email: '',
     avatar: ''
   });
+
+  // Docente asignado al grupo del alumno (cargado desde Google Sheets CLE)
+  const [assignedTeacherFromSheet, setAssignedTeacherFromSheet] = useState<{
+    name: string;
+    email: string;
+    id: string;
+    phone: string;
+    degree: string;
+    status: string;
+  } | null>(null);
+  const [isLoadingTeacher, setIsLoadingTeacher] = useState(false);
+
+  // Cargar docente del grupo del alumno desde Google Sheets
+  useEffect(() => {
+    if (effectiveRole !== 'ALUMNO' || !userEmail) return;
+
+    const fetchAssignedTeacher = async () => {
+      try {
+        setIsLoadingTeacher(true);
+        const misGrupos = await misGruposIngles(userEmail);
+        if (misGrupos.length > 0) {
+          const primerGrupo = misGrupos[0];
+          const docenteEmail = primerGrupo.docente_email;
+          const docenteId = primerGrupo.docente_id;
+          if (docenteEmail) {
+            const perfilDocente = await obtenerPerfilCompleto({ email: docenteEmail, rol: 'DOCENTE' });
+            setAssignedTeacherFromSheet({
+              name: (perfilDocente.nombre as string) || 'Docente',
+              email: docenteEmail,
+              id: docenteId || '—',
+              phone: String(perfilDocente.phone ?? ''),
+              degree: (perfilDocente.degree as string) || 'DOCENTE',
+              status: 'ACTIVE',
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error cargando docente asignado:', err);
+      } finally {
+        setIsLoadingTeacher(false);
+      }
+    };
+    fetchAssignedTeacher();
+  }, [effectiveRole, userEmail]);
+
+  // Docente final: priorizar Google Sheets, fallback a AppContext
+  const assignedTeacher = assignedTeacherFromSheet || (() => {
+    if (effectiveRole !== 'ALUMNO') return null;
+    const studentUserId = studentData.userId;
+    if (!studentUserId) return null;
+    const studentGroup = groups.find(g => g.studentIds.includes(studentUserId));
+    if (!studentGroup) return null;
+    const teacher = teachers.find(t => t.id === studentGroup.teacherId);
+    return teacher || null;
+  })();
+
+  // Horarios disponibles del docente (cargados desde Google Sheets)
+  const [availableSlots, setAvailableSlots] = useState<Array<{
+    asesoria_id: string;
+    dia: string;
+    hora: string;
+    plataforma: string;
+    lugar: string;
+    duracion_minutos: number;
+  }>>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+  // Cargar horarios disponibles cuando se abre el modal
+  useEffect(() => {
+    if (!isCalendarOpen || !assignedTeacher?.email) return;
+
+    const fetchSlots = async () => {
+      try {
+        setIsLoadingSlots(true);
+        const slots = await listarHorariosDisponiblesDocente(assignedTeacher.email);
+        setAvailableSlots(slots);
+      } catch (err) {
+        console.error('Error cargando horarios:', err);
+        setAvailableSlots([]);
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+    fetchSlots();
+  }, [isCalendarOpen, assignedTeacher?.email]);
 
   // Catálogo de opciones — fuente única de verdad.
   // Coincide EXACTAMENTE con los menús desplegables de la hoja ALUMNOS
@@ -577,10 +728,11 @@ export function UserSettings({
       campos = {
         nombre: teacherData.name, avatar: teacherData.avatar,
         phone: teacherData.phone, bio: teacherData.bio,
-        curp: teacherData.curp,
+        curp: teacherData.curp, id_empleado: teacherData.id_empleado,
         birth_date: teacherData.birthDate, degree: teacherData.degree,
         specialties: JSON.stringify(teacherData.specialties),
         certifications: JSON.stringify(teacherData.certifications),
+        years_of_experience: String(teacherData.years_of_experience),
         // Vínculo con director (solo lectura — se mantiene del registro)
         institution_code: teacherData.institution_code || '',
         director_email: teacherData.director_email || '',
@@ -1692,58 +1844,70 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                 </div>
                              </div>
                              
-                             <div className="flex items-center gap-4 sm:gap-8 bg-black/40 p-3 sm:p-6 rounded-xl sm:rounded-[2rem] border border-white/5 relative overflow-hidden group">
-                                 <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
-                                    {teacherData.avatar ? (
-                                      <img src={teacherData.avatar} className="w-full h-full object-cover" alt="Teacher" />
-                                    ) : (
-                                      <User size={20} className="text-white/20" />
-                                    )}
+                             {isLoadingTeacher ? (
+                               <div className="text-center py-8 bg-black/20 rounded-2xl border border-white/5">
+                                 <Loader2 size={32} className="text-[#DEFF9A] mx-auto mb-3 animate-spin" />
+                                 <p className="text-white/40 text-xs font-bold uppercase tracking-wider">Cargando docente asignado...</p>
+                               </div>
+                             ) : assignedTeacher ? (
+                               <>
+                                 <div className="flex items-center gap-4 sm:gap-8 bg-black/40 p-3 sm:p-6 rounded-xl sm:rounded-[2rem] border border-white/5 relative overflow-hidden group">
+                                     <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl border border-white/10 overflow-hidden shrink-0 flex items-center justify-center bg-white/5">
+                                       <User size={20} className="text-white/20" />
+                                     </div>
+                                    <div className="flex-1 min-w-0">
+                                       <h5 className="text-white text-sm sm:text-xl font-black uppercase tracking-tighter mb-0.5 sm:mb-1 truncate">{assignedTeacher.name}</h5>
+                                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
+                                           <span className="text-white/40 text-[8px] sm:text-[10px] font-mono tracking-widest uppercase">ID: {assignedTeacher.id}</span>
+                                          <span className="text-[#DEFF9A] text-[8px] sm:text-[9px] font-black uppercase tracking-widest">{assignedTeacher.status === 'ACTIVE' ? 'ACTIVO' : 'INACTIVO'}</span>
+                                       </div>
+                                    </div>
+                                    <div className="flex flex-col items-center gap-1 sm:gap-2 shrink-0">
+                                       <div className="flex gap-0.5">
+                                          {[1,2,3,4,5].map(i => (
+                                            <Zap key={i} size={12} fill={i <= 5 ? "#DEFF9A" : "transparent"} className={i <= 5 ? "text-[#DEFF9A]" : "text-white/10"} />
+                                          ))}
+                                       </div>
+                                       <p className="text-[8px] sm:text-[10px] font-black text-white/40 uppercase tracking-widest">DOCENTE</p>
+                                    </div>
+                                    
+                                    <div className="absolute inset-0 bg-gradient-to-r from-[#DEFF9A]/05 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                  </div>
-                                <div className="flex-1 min-w-0">
-                                   <h5 className="text-white text-sm sm:text-xl font-black uppercase tracking-tighter mb-0.5 sm:mb-1 truncate">{teacherData.name}</h5>
-                                   <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
-                                       <span className="text-white/40 text-[8px] sm:text-[10px] font-mono tracking-widest uppercase">ID: {teacherData.id_empleado}</span>
-                                      <span className="text-[#DEFF9A] text-[8px] sm:text-[9px] font-black uppercase tracking-widest">{teacherData.degree}</span>
-                                   </div>
-                                </div>
-                                <div className="flex flex-col items-center gap-1 sm:gap-2 shrink-0">
-                                   <div className="flex gap-0.5">
-                                      {[1,2,3,4,5].map(i => (
-                                        <Zap key={i} size={12} fill={i <= 5 ? "#DEFF9A" : "transparent"} className={i <= 5 ? "text-[#DEFF9A]" : "text-white/10"} />
-                                      ))}
-                                   </div>
-                                   <p className="text-[8px] sm:text-[10px] font-black text-white/40 uppercase tracking-widest">IA: 9.8</p>
-                                </div>
-                                
-                                <div className="absolute inset-0 bg-gradient-to-r from-[#DEFF9A]/05 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                             </div>
-                             
-                             <div className="mt-3 sm:mt-6 flex flex-col sm:flex-row gap-2 sm:gap-4">
-                                 <button 
-                                   onClick={() => {
-                                     if (onContactTeacher) {
-                                       onContactTeacher(
-                                         teacherData.email,
-                                         "Hello Teacher, I would like some support please."
-                                       );
-                                     }
-                                   }}
-                                  className="flex-1 py-2.5 sm:py-4 px-4 sm:px-6 bg-white/5 border border-white/10 hover:border-[#DEFF9A]/45 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white hover:bg-[#DEFF9A]/5 transition-all flex items-center justify-center gap-2"
-                                >
-                                   <Mail size={14} /> Contactar
-                                </button>
-                                <button 
-                                  onClick={() => setIsCalendarOpen(true)}
-                                  className="flex-1 py-2.5 sm:py-4 px-4 sm:px-6 bg-gradient-to-r from-[#38BDF8] to-[#0284c7] border border-[#38BDF8]/20 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-white hover:shadow-[0_0_30px_rgba(56,189,248,0.35)] hover:scale-[1.02] hover:bg-opacity-95 transition-all flex items-center justify-center gap-2"
-                                >
-                                   <Calendar size={14} /> Agendar
-                                </button>
-                             </div>
-                          </div>
-                        )}
-                     </div>
-                  </GlassCard>
+                                 
+                                 <div className="mt-3 sm:mt-6 flex flex-col sm:flex-row gap-2 sm:gap-4">
+                                     <button 
+                                       onClick={() => {
+                                         if (onContactTeacher) {
+                                           onContactTeacher(
+                                             assignedTeacher.email,
+                                             "Hello Teacher, I would like some support please."
+                                           );
+                                         }
+                                       }}
+                                      className="flex-1 py-2.5 sm:py-4 px-4 sm:px-6 bg-white/5 border border-white/10 hover:border-[#DEFF9A]/45 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-white/60 hover:text-white hover:bg-[#DEFF9A]/5 transition-all flex items-center justify-center gap-2"
+                                    >
+                                       <Mail size={14} /> Contactar
+                                     </button>
+                                     <button 
+                                       onClick={() => setIsCalendarOpen(true)}
+                                       className="flex-1 py-2.5 sm:py-4 px-4 sm:px-6 bg-gradient-to-r from-[#38BDF8] to-[#0284c7] border border-[#38BDF8]/20 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-white hover:shadow-[0_0_30px_rgba(56,189,248,0.35)] hover:scale-[1.02] hover:bg-opacity-95 transition-all flex items-center justify-center gap-2"
+                                     >
+                                       <Calendar size={14} /> Agendar
+                                     </button>
+                                 </div>
+                               </>
+                             ) : (
+                               <div className="text-center py-8 bg-black/20 rounded-2xl border border-white/5">
+                                 <User size={32} className="text-white/10 mx-auto mb-3" />
+                                 <p className="text-white/40 text-xs font-bold uppercase tracking-wider">Sin docente asignado</p>
+                                 <p className="text-white/20 text-[10px] mt-1">Aún no estás vinculado a un grupo con docente</p>
+                               </div>
+                              )}
+                           </div>
+                         )}
+
+                      </div>
+                   </GlassCard>
                </motion.div>
              )}
 
@@ -1775,17 +1939,19 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                 <option value="TÉCNICO" className="bg-[#061a1a] text-[#DEFF9A]">TÉCNICO</option>
                                </select>
                              </div>
-                            <div className="space-y-1.5 sm:space-y-2">
-                               <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Años de Experiencia</label>
-                               <div className="flex items-center gap-3 sm:gap-4">
-                                  <input 
-                                   type="number" 
-                                   value={12} readOnly 
-                                   className="w-20 sm:w-24 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-black outline-none focus:border-[#38BDF8]/40 transition-all"
-                                  />
-                                  <span className="text-[9px] sm:text-[10px] font-black text-white/20 uppercase tracking-widest">Años</span>
-                               </div>
-                            </div>
+                             <div className="space-y-1.5 sm:space-y-2">
+                                <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Años de Experiencia</label>
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                   <input 
+                                    type="number" 
+                                    min="0" max="50"
+                                    value={teacherData.years_of_experience}
+                                    onChange={(e) => { setTeacherData({...teacherData, years_of_experience: parseInt(e.target.value) || 0}); setIsDirty(true); }}
+                                    className="w-20 sm:w-24 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-black outline-none focus:border-[#38BDF8]/40 transition-all"
+                                   />
+                                   <span className="text-[9px] sm:text-[10px] font-black text-white/20 uppercase tracking-widest">Años</span>
+                                </div>
+                             </div>
                          </div>
 
                          {/* Repository of Certifications */}
@@ -1795,7 +1961,10 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                   <h4 className="text-[10px] sm:text-[12px] font-black text-white uppercase tracking-tight">Certificaciones</h4>
                                   <p className="text-[8px] sm:text-[9px] text-white/30 font-bold uppercase tracking-widest">Respaldo de tu formación.</p>
                                </div>
-                               <button className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-[#DEFF9A]/10 text-[#DEFF9A] border border-[#DEFF9A]/20 rounded-lg sm:rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest hover:bg-[#DEFF9A]/20 transition-all">
+                               <button 
+                                 onClick={() => setShowCertModal(true)}
+                                 className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-[#DEFF9A]/10 text-[#DEFF9A] border border-[#DEFF9A]/20 rounded-lg sm:rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest hover:bg-[#DEFF9A]/20 transition-all"
+                               >
                                  <Plus size={14} /> Añadir Documento
                               </button>
                            </div>
@@ -1818,14 +1987,20 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                               <p className="text-white/20 text-[7px] sm:text-[8px] font-bold uppercase tracking-widest">DESDE: {cert.date}</p>
                                            </div>
                                         </div>
-                                        <div className="flex gap-1.5 sm:gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                           <button className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all">
-                                              <Download size={12} />
-                                           </button>
-                                           <button className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500/40 hover:text-red-500 transition-all">
-                                              <Trash2 size={12} />
-                                           </button>
-                                        </div>
+                                         <div className="flex gap-1.5 sm:gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                            <button 
+                                              onClick={() => handleDownloadCertification(cert)}
+                                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all"
+                                            >
+                                               <Download size={12} />
+                                            </button>
+                                            <button 
+                                              onClick={() => handleDeleteCertification(cert.id)}
+                                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500/40 hover:text-red-500 transition-all"
+                                            >
+                                               <Trash2 size={12} />
+                                            </button>
+                                         </div>
                                      </motion.div>
                                   ))}
                                </AnimatePresence>
@@ -1842,10 +2017,10 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                   <h4 className="text-[10px] sm:text-[13px] font-black text-white uppercase tracking-tight italic">Excelencia Académica</h4>
                                   <p className="text-[8px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest leading-relaxed">Perfil visible para la Red de Apoyo.</p>
                                </div>
-                               <div className="text-right shrink-0">
-                                  <p className="text-lg sm:text-2xl font-black text-[#DEFF9A]">100%</p>
-                                  <p className="text-[7px] sm:text-[8px] font-black text-white/20 uppercase tracking-widest">Validado</p>
-                               </div>
+                                <div className="text-right shrink-0">
+                                   <p className="text-lg sm:text-2xl font-black text-[#DEFF9A]">{calculateProfileCompletion()}%</p>
+                                   <p className="text-[7px] sm:text-[8px] font-black text-white/20 uppercase tracking-widest">{calculateProfileCompletion() === 100 ? 'Validado' : 'Incompleto'}</p>
+                                </div>
                             </div>
                          </div>
                      </div>
@@ -2243,74 +2418,156 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                    {/* Header Decoration */}
                    <div className="absolute top-0 right-0 w-24 sm:w-32 h-24 sm:h-32 bg-[#DEFF9A]/5 blur-[40px] -translate-y-1/2 translate-x-1/2 pointer-events-none" />
                    
-                   <div className="flex justify-between items-start mb-4 sm:mb-6">
+                    <div className="flex justify-between items-start mb-4 sm:mb-6">
+                       <div>
+                          <span className="text-[#DEFF9A] text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em]">Reserva de Red de Apoyo</span>
+                          <h3 className="text-white text-base sm:text-xl font-black italic tracking-tight uppercase mt-1">Agenda de Asesoría</h3>
+                          <p className="text-[8px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">{assignedTeacher?.name || 'Docente'}</p>
+                       </div>
+                       <button 
+                         onClick={() => setIsCalendarOpen(false)}
+                         className="p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-xl sm:rounded-2xl text-white/40 hover:text-white transition-all border border-white/5"
+                       >
+                          <X size={14} />
+                       </button>
+                    </div>
+                    
+                    {/* Calendar Slots */}
+                    <div className="space-y-3 sm:space-y-4">
+                       <div className="p-2.5 sm:p-4 bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl text-center">
+                          <p className="text-[9px] sm:text-[11px] font-black text-white/60 uppercase tracking-widest">Horarios Disponibles</p>
+                       </div>
+                       
+                       {isLoadingSlots ? (
+                         <div className="py-12 text-center">
+                           <Loader2 size={24} className="text-[#DEFF9A] mx-auto mb-3 animate-spin" />
+                           <p className="text-white/40 text-[10px] font-mono uppercase tracking-wider">Cargando horarios...</p>
+                         </div>
+                       ) : availableSlots.length === 0 ? (
+                         <div className="py-12 text-center border-2 border-dashed border-white/10 rounded-2xl">
+                           <Calendar size={32} className="text-white/10 mx-auto mb-3" />
+                           <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Sin horarios disponibles</p>
+                           <p className="text-white/20 text-[8px] mt-1">Tu docente aún no ha publicado horarios de asesoría</p>
+                         </div>
+                       ) : (
+                         <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                           {availableSlots.map(slot => {
+                             const slotLabel = `${slot.dia.substring(0, 3)} ${slot.hora}`;
+                             const isSelected = selectedSlot === slot.asesoria_id;
+                             return (
+                                <button
+                                  key={slot.asesoria_id}
+                                  onClick={() => setSelectedSlot(slot.asesoria_id)}
+                                  className={`p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all flex flex-col justify-between h-20 sm:h-28 group ${
+                                    isSelected 
+                                      ? 'bg-[#DEFF9A]/10 border-[#DEFF9A] text-[#DEFF9A] shadow-[0_0_20px_rgba(222,255,154,0.15)]'
+                                      : 'bg-[#0f1424] hover:bg-[#141b30] border-gray-800 text-white/60 hover:text-white hover:border-gray-700'
+                                  }`}
+                                >
+                                  <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider">{slotLabel}</span>
+                                  <span className={`text-[7px] sm:text-[8px] font-bold uppercase tracking-widest leading-none ${isSelected ? 'text-[#DEFF9A]/60' : 'text-white/20'}`}>
+                                     {slot.plataforma === 'GOOGLE_MEET' ? 'Meet' : 'Teams'} • {slot.duracion_minutos}min
+                                  </span>
+                                  <span className={`text-[6px] sm:text-[7px] font-bold uppercase tracking-widest leading-none truncate ${isSelected ? 'text-[#DEFF9A]/50' : 'text-white/15'}`}>
+                                     📍 {slot.lugar || 'SIN ESPECIFICAR'}
+                                  </span>
+                                </button>
+                             );
+                           })}
+                         </div>
+                       )}
+                    </div>
+
+                    {/* Footer Controls */}
+                    <div className="mt-4 sm:mt-8 pt-3 sm:pt-6 border-t border-gray-800 flex items-center justify-between gap-3 sm:gap-4">
+                       <p className="text-[8px] sm:text-[9px] text-white/30 uppercase tracking-widest max-w-[150px] sm:max-w-[200px] hidden sm:block">
+                          La confirmación sincroniza con tu Google Calendar y Teams.
+                       </p>
+                       <button
+                          disabled={!selectedSlot || isLoadingSlots}
+                          onClick={() => {
+                            if (selectedSlot) {
+                              const slot = availableSlots.find(s => s.asesoria_id === selectedSlot);
+                              setToastMessage(`Sesión agendada: ${slot?.dia} ${slot?.hora}`);
+                              setShowToast(true);
+                              setIsCalendarOpen(false);
+                              setSelectedSlot(null);
+                            }
+                          }}
+                          className="px-6 sm:px-8 py-3 sm:py-4 bg-[#DEFF9A] text-[#061a1a] font-black text-[9px] sm:text-[10px] tracking-widest uppercase rounded-xl sm:rounded-[1.5rem] hover:scale-105 transition-all shadow-[0_10px_20px_rgba(222,255,154,0.25)] disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                           Confirmar
+                        </button>
+                    </div>
+                </motion.div>
+             </div>
+           )}
+        </AnimatePresence>
+
+        {/* Modal Agregar Certificación */}
+        <AnimatePresence>
+           {showCertModal && (
+             <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4">
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowCertModal(false)}
+                  className="absolute inset-0 bg-[#020b18]/80 backdrop-blur-md"
+                />
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative z-10 w-full max-w-md bg-[#0b0f19] border border-gray-800 rounded-2xl sm:rounded-[2rem] p-4 sm:p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]"
+                >
+                   <div className="flex justify-between items-start mb-6">
                       <div>
-                         <span className="text-[#DEFF9A] text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em]">Reserva de Red de Apoyo</span>
-                         <h3 className="text-white text-base sm:text-xl font-black italic tracking-tight uppercase mt-1">Agenda de Asesoría</h3>
-                         <p className="text-[8px] sm:text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Mtra. Ana López</p>
+                         <span className="text-[#DEFF9A] text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em]">Nueva Certificación</span>
+                         <h3 className="text-white text-base sm:text-xl font-black italic tracking-tight uppercase mt-1">Agregar Documento</h3>
                       </div>
-                      <button 
-                        onClick={() => setIsCalendarOpen(false)}
-                        className="p-2 sm:p-3 bg-white/5 hover:bg-white/10 rounded-xl sm:rounded-2xl text-white/40 hover:text-white transition-all border border-white/5"
-                      >
+                      <button onClick={() => setShowCertModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all border border-white/5">
                          <X size={14} />
                       </button>
                    </div>
-                   
-                   {/* Calendar Slots */}
-                   <div className="space-y-3 sm:space-y-4">
-                      <div className="p-2.5 sm:p-4 bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl text-center">
-                         <p className="text-[9px] sm:text-[11px] font-black text-white/60 uppercase tracking-widest">Horarios Disponibles</p>
+                   <div className="space-y-4">
+                      <div>
+                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">Nombre de la Certificación *</label>
+                        <input 
+                          type="text" 
+                          value={newCertName}
+                          onChange={(e) => setNewCertName(e.target.value)}
+                          placeholder="Ej: TOEFL iBT Score Report"
+                          className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all"
+                          autoFocus
+                        />
                       </div>
-                      
-                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                         {[
-                           { id: '1', label: 'Lun 4:00 PM', desc: 'Teams' },
-                           { id: '2', label: 'Lun 5:30 PM', desc: 'Meet' },
-                           { id: '3', label: 'Mié 9:00 AM', desc: 'Teams' },
-                           { id: '4', label: 'Mié 4:00 PM', desc: 'Meet' },
-                           { id: '5', label: 'Vie 11:30 AM', desc: 'Teams' },
-                           { id: '6', label: 'Vie 3:00 PM', desc: 'Meet' },
-                         ].map(slot => {
-                           const isSelected = selectedSlot === slot.label;
-                           return (
-                             <button
-                               key={slot.id}
-                               onClick={() => setSelectedSlot(slot.label)}
-                               className={`p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all flex flex-col justify-between h-16 sm:h-24 group ${
-                                 isSelected 
-                                   ? 'bg-[#DEFF9A]/10 border-[#DEFF9A] text-[#DEFF9A] shadow-[0_0_20px_rgba(222,255,154,0.15)]'
-                                   : 'bg-[#0f1424] hover:bg-[#141b30] border-gray-800 text-white/60 hover:text-white hover:border-gray-700'
-                               }`}
-                             >
-                               <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider">{slot.label}</span>
-                               <span className={`text-[7px] sm:text-[8px] font-bold uppercase tracking-widest leading-none ${isSelected ? 'text-[#DEFF9A]/60' : 'text-white/20'}`}>
-                                  {slot.desc}
-                               </span>
-                             </button>
-                           );
-                         })}
+                      <div>
+                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">Fecha de Obtención</label>
+                        <input 
+                          type="date" 
+                          value={newCertDate}
+                          onChange={(e) => setNewCertDate(e.target.value)}
+                          className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all"
+                        />
                       </div>
-                   </div>
-
-                   {/* Footer Controls */}
-                   <div className="mt-4 sm:mt-8 pt-3 sm:pt-6 border-t border-gray-800 flex items-center justify-between gap-3 sm:gap-4">
-                      <p className="text-[8px] sm:text-[9px] text-white/30 uppercase tracking-widest max-w-[150px] sm:max-w-[200px] hidden sm:block">
-                         La confirmación sincroniza con tu Google Calendar y Teams.
-                      </p>
-                      <button
-                         disabled={!selectedSlot}
-                         onClick={() => {
-                           if (selectedSlot) {
-                             setToastMessage(`${selectedSlot} para Subject Pronouns`);
-                             setShowToast(true);
-                             setIsCalendarOpen(false);
-                           }
-                         }}
-                         className="px-6 sm:px-8 py-3 sm:py-4 bg-[#DEFF9A] text-[#061a1a] font-black text-[9px] sm:text-[10px] tracking-widest uppercase rounded-xl sm:rounded-[1.5rem] hover:scale-105 transition-all shadow-[0_10px_20px_rgba(222,255,154,0.25)] disabled:opacity-30 disabled:pointer-events-none"
-                       >
-                          Confirmar
-                       </button>
+                      <div>
+                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">Enlace al Documento (opcional)</label>
+                        <input 
+                          type="url" 
+                          value={newCertUrl}
+                          onChange={(e) => setNewCertUrl(e.target.value)}
+                          placeholder="https://drive.google.com/file/..."
+                          className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all"
+                        />
+                      </div>
+                      <button 
+                        onClick={handleAddCertification}
+                        disabled={!newCertName.trim()}
+                        className="w-full py-3 bg-[#DEFF9A] text-[#061a1a] font-black text-[10px] tracking-widest uppercase rounded-xl hover:scale-[1.02] transition-all disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        Agregar Certificación
+                      </button>
                    </div>
                 </motion.div>
              </div>

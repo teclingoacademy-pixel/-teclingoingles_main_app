@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { RadialBarChart, RadialBar, ResponsiveContainer, PolarAngleAxis, Tooltip } from 'recharts';
+import { RadialBarChart, RadialBar, PolarAngleAxis, Tooltip } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { 
   Smile, 
   Frown, 
@@ -76,7 +77,7 @@ export function Sentiment() {
           className="col-span-12 lg:col-span-4"
         >
           <div className="h-[300px] w-full flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
+            <SafeResponsiveContainer width="100%" height="100%">
               <RadialBarChart 
                 cx="50%" 
                 cy="50%" 
@@ -98,7 +99,7 @@ export function Sentiment() {
                   contentStyle={{ backgroundColor: '#061a1a', border: '1px solid #DEFF9A20', borderRadius: '12px', fontSize: '10px' }}
                 />
               </RadialBarChart>
-            </ResponsiveContainer>
+            </SafeResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                <Smile size={24} className="text-[#DEFF9A] mb-1" />
                <span className="text-xs font-black text-white">OPTIMIZADO</span>

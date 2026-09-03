@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Clock, 
   Video, 
@@ -25,16 +25,50 @@ import {
   Zap,
   ExternalLink,
   RefreshCw,
-  Bell
+  Bell,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
+import { useAppContext } from '../context/AppContext';
+import { 
+  listarHorariosDisponiblesDocente, 
+  crearHitoAsesoria, 
+  eliminarHitoAsesoria 
+} from '../services/identityService';
+
+// Lugares comunes en una institución universitaria
+const LUGARES_COMUNES = [
+  'AULA 1',
+  'AULA 2',
+  'AULA 3',
+  'AULA 4',
+  'AULA 5',
+  'AULA 6',
+  'AULA 7',
+  'AULA 8',
+  'AULA 9',
+  'AULA 10',
+  'SALA DE JUNTAS',
+  'DIRECCIÓN',
+  'OFicina Docente',
+  'CAFETERÍA',
+  'BIBLIOTECA',
+  'LABORATORIO DE CÓMPUTO',
+  'AUDITORIO',
+  'SALA DE ESTUDIOS',
+  'PLAZA CENTRAL',
+  'ONLINE (Meet)',
+  'ONLINE (Teams)',
+  'OTRO (especificar en tema)'
+];
 
 interface TimeSlot {
   id: string;
   day: string;
   time: string;
   platform: 'GOOGLE_MEET' | 'TEAMS_SYNCHRONOUS';
+  lugar: string;
   status: 'AVAILABLE' | 'BOOKED';
   bookedBy?: {
     name: string;
@@ -71,57 +105,52 @@ interface HistoryItem {
 }
 
 export function AvailabilityModule() {
+  const { userEmail } = useAppContext();
   const [activeTab, setActiveTab] = useState<'config' | 'pending' | 'history'>('config');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
-  // Slots published by teacher (Hitos)
-  const [slots, setSlots] = useState<TimeSlot[]>([
-    { id: 'SLT-001', day: 'Lunes', time: '04:00 PM', platform: 'TEAMS_SYNCHRONOUS', status: 'AVAILABLE' },
-    { id: 'SLT-002', day: 'Lunes', time: '05:30 PM', platform: 'GOOGLE_MEET', status: 'BOOKED', bookedBy: { name: 'JUAN PÉREZ DELGADO', id: 'ALU-2026-001', group: 'Ing. Sistemas - 4º A', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop', topic: 'Refuerzo de verbos irregulares e irregulares regulares' } },
-    { id: 'SLT-003', day: 'Miércoles', time: '09:00 AM', platform: 'TEAMS_SYNCHRONOUS', status: 'AVAILABLE' },
-    { id: 'SLT-004', day: 'Miércoles', time: '04:00 PM', platform: 'GOOGLE_MEET', status: 'AVAILABLE' },
-  ]);
+  // Slots published by teacher (Hitos) - loaded from API
+  const [slots, setSlots] = useState<TimeSlot[]>([]);
 
   // Incoming booking requests from students (Data Lake pending sync)
-  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([
-    {
-      id: 'REQ-301',
-      student: 'MARÍA GÓMEZ ESTRADA',
-      studentId: 'ALU-2026-002',
-      group: 'Ing. Industrial - 2º B',
-      day: 'Jueves',
-      timeSlot: '11:30 AM',
-      platform: 'TEAMS_SYNCHRONOUS',
-      date: '2026-06-04',
-      topic: 'Auditoría de examen speaking y fluidez virtual',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop'
-    },
-    {
-      id: 'REQ-302',
-      student: 'LUIS MARTÍNEZ',
-      studentId: 'ALU-2026-003',
-      group: 'Ing. Sistemas - 4º A',
-      day: 'Viernes',
-      timeSlot: '02:00 PM',
-      platform: 'GOOGLE_MEET',
-      date: '2026-06-05',
-      topic: 'Revisión técnica de bitácora y pronunciación -ed',
-      avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop'
-    }
-  ]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
 
   // Completed or cancelled advisor sessions (Academic ledgers)
-  const [historyList, setHistoryList] = useState<HistoryItem[]>([
-    { id: 'HIS-101', student: 'CARLOS RUIZ VALLE', studentId: 'ALU-2026-009', group: 'Ing. Sistemas - 4º A', topic: 'Práctica Speaking IA - Módulo B1', date: '2026-05-25', time: '04:00 PM', status: 'COMPLETED', platform: 'TEAMS_SYNCHRONOUS' },
-    { id: 'HIS-102', student: 'ANA SÁNCHEZ GÓMEZ', studentId: 'ALU-2026-004', group: 'Ing. Sistemas - 4º A', topic: 'Entonación y modulación en discursos técnicos', date: '2026-05-22', time: '11:00 AM', status: 'COMPLETED', platform: 'GOOGLE_MEET' },
-    { id: 'HIS-103', student: 'SOFÍA LÓPEZ MEJÍA', studentId: 'ALU-2026-006', group: 'Ing. Sistemas - 4º A', topic: 'Refuerzo de Tiempos Verbales Continuos', date: '2026-05-18', time: '05:30 PM', status: 'CANCELLED', platform: 'GOOGLE_MEET' }
-  ]);
+  const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
 
   // Form states for creating a new slot of availability
   const [newDay, setNewDay] = useState<string>('Lunes');
   const [newTime, setNewTime] = useState<string>('04:00 PM');
   const [newPlatform, setNewPlatform] = useState<'GOOGLE_MEET' | 'TEAMS_SYNCHRONOUS'>('GOOGLE_MEET');
+  const [newLugar, setNewLugar] = useState<string>(LUGARES_COMUNES[0]);
+
+  // Load slots from API on mount
+  useEffect(() => {
+    if (!userEmail) return;
+    
+    const loadSlots = async () => {
+      try {
+        setIsLoadingData(true);
+        const apiSlots = await listarHorariosDisponiblesDocente(userEmail);
+        const mappedSlots: TimeSlot[] = apiSlots.map(slot => ({
+          id: slot.asesoria_id,
+          day: slot.dia,
+          time: slot.hora,
+          platform: slot.plataforma as 'GOOGLE_MEET' | 'TEAMS_SYNCHRONOUS',
+          lugar: slot.lugar,
+          status: slot.estado as 'AVAILABLE' | 'BOOKED',
+        }));
+        setSlots(mappedSlots);
+      } catch (err) {
+        console.error('Error cargando slots:', err);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+    loadSlots();
+  }, [userEmail]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -130,24 +159,59 @@ export function AvailabilityModule() {
     }, 4000);
   };
 
-  const handleAddSlot = (e: React.FormEvent) => {
+  const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newSlot: TimeSlot = {
-      id: `SLT-${Date.now()}`,
-      day: newDay,
-      time: newTime,
-      platform: newPlatform,
-      status: 'AVAILABLE'
-    };
-    setSlots(prev => [...prev, newSlot]);
-    showToast(`Hito de asistencia (${newDay} - ${newTime}) publicado con éxito en el portal del alumno.`);
+    if (!userEmail) return;
+
+    try {
+      const result = await crearHitoAsesoria({
+        email: userEmail,
+        dia: newDay,
+        hora: newTime,
+        plataforma: newPlatform,
+        lugar: newLugar,
+        duracion_minutos: 45,
+        max_alumnos_por_slot: 1,
+        anticipacion_horas_min: 24,
+      });
+
+      if (result.ok && result.asesoria_id) {
+        const newSlot: TimeSlot = {
+          id: result.asesoria_id,
+          day: newDay,
+          time: newTime,
+          platform: newPlatform,
+          lugar: newLugar,
+          status: 'AVAILABLE'
+        };
+        setSlots(prev => [...prev, newSlot]);
+        showToast(`Hito de asistencia (${newDay} - ${newTime}) publicado con éxito en el portal del alumno.`);
+      } else {
+        showToast(`Error: ${result.error || 'No se pudo crear el hito'}`);
+      }
+    } catch (err) {
+      console.error('Error creando hito:', err);
+      showToast('Error de conexión. Intenta de nuevo.');
+    }
   };
 
-  const handleRemoveSlot = (id: string) => {
-    const slotToRemove = slots.find(s => s.id === id);
-    setSlots(prev => prev.filter(slot => slot.id !== id));
-    if (slotToRemove) {
-      showToast(`Hito retirado: (${slotToRemove.day} - ${slotToRemove.time}) ya no está disponible para reserva.`);
+  const handleRemoveSlot = async (id: string) => {
+    if (!userEmail) return;
+    
+    try {
+      const result = await eliminarHitoAsesoria(userEmail, id);
+      if (result.ok) {
+        const slotToRemove = slots.find(s => s.id === id);
+        setSlots(prev => prev.filter(slot => slot.id !== id));
+        if (slotToRemove) {
+          showToast(`Hito retirado: (${slotToRemove.day} - ${slotToRemove.time}) ya no está disponible para reserva.`);
+        }
+      } else {
+        showToast(`Error: ${result.error || 'No se pudo eliminar'}`);
+      }
+    } catch (err) {
+      console.error('Error eliminando hito:', err);
+      showToast('Error de conexión. Intenta de nuevo.');
     }
   };
 
@@ -165,6 +229,7 @@ export function AvailabilityModule() {
         day: request.day,
         time: request.timeSlot,
         platform: request.platform,
+        lugar: 'SIN ESPECIFICAR',
         status: 'BOOKED',
         bookedBy: {
           name: request.student,
@@ -380,6 +445,21 @@ export function AvailabilityModule() {
                     </select>
                   </div>
 
+                  <div className="space-y-1">
+                    <label className="text-white/30 font-bold uppercase tracking-widest text-[9px] block flex items-center gap-1">
+                      <MapPin size={10} /> LUGAR / UBICACIÓN
+                    </label>
+                    <select 
+                      value={newLugar} 
+                      onChange={(e) => setNewLugar(e.target.value)}
+                      className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white font-sans focus:border-[#22D3EE] outline-none"
+                    >
+                      {LUGARES_COMUNES.map(lugar => (
+                        <option key={lugar} value={lugar}>{lugar}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <button 
                     type="submit"
                     className="w-full py-4 rounded-2xl bg-[#22D3EE] text-[#061a1a] font-black uppercase text-[10px] tracking-widest hover:shadow-[0_0_35px_rgba(34,211,238,0.35)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 [border:none]"
@@ -435,6 +515,10 @@ export function AvailabilityModule() {
                               <p className="text-white/40 text-[9px] font-mono uppercase font-bold mt-1 tracking-widest flex items-center gap-1">
                                 <Video size={10} className="text-white/20" />
                                 {slot.platform === 'GOOGLE_MEET' ? 'Google Meet (Workspace auto-meet)' : 'Microsoft Teams Synced link'}
+                              </p>
+                              <p className="text-white/40 text-[9px] font-mono uppercase font-bold mt-1 tracking-widest flex items-center gap-1">
+                                <MapPin size={10} className="text-white/20" />
+                                {slot.lugar || 'SIN ESPECIFICAR'}
                               </p>
 
                               {/* Student Detail if Booked */}

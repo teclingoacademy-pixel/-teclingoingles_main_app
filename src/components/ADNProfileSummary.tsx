@@ -9,8 +9,8 @@ import {
   PolarGrid, 
   PolarAngleAxis, 
   PolarRadiusAxis, 
-  ResponsiveContainer 
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { 
   Dna, 
   Brain, 
@@ -99,7 +99,7 @@ export function ADNProfileSummary() {
           <div className="col-span-12 lg:col-span-5">
              <GlassCard title="DNA Skills Radar" icon={Target} accent="green">
                 <div className="h-[300px] w-full mt-4">
-                   <ResponsiveContainer width="100%" height="100%">
+                   <SafeResponsiveContainer width="100%" height="100%">
                       <RadarChart cx="50%" cy="50%" outerRadius="80%" data={adnStats}>
                          <PolarGrid stroke="#ffffff10" />
                          <PolarAngleAxis dataKey="subject" tick={{ fill: '#ffffff40', fontSize: 10, fontWeight: 900 }} />
@@ -111,8 +111,8 @@ export function ADNProfileSummary() {
                             fill="#DEFF9A"
                             fillOpacity={0.4}
                          />
-                      </RadarChart>
-                   </ResponsiveContainer>
+                       </RadarChart>
+                   </SafeResponsiveContainer>
                 </div>
                 <div className="mt-6 space-y-4">
                    <div className="flex items-center justify-between px-2">

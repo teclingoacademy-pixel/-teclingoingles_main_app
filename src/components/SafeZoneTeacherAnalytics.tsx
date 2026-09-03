@@ -18,7 +18,6 @@ import {
   Award
 } from 'lucide-react';
 import { 
-  ResponsiveContainer, 
   AreaChart, 
   Area, 
   XAxis, 
@@ -26,6 +25,7 @@ import {
   Tooltip, 
   CartesianGrid 
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { SAFEZONE_MOCK_DATA, VELOCITY_PRESETS } from '../data/safeZoneContext';
 
 export function SafeZoneTeacherAnalytics() {
@@ -303,7 +303,7 @@ export function SafeZoneTeacherAnalytics() {
               </div>
 
               <div className="h-48 pt-4">
-                <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={activeStudentData.evolucion}
                     margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
@@ -342,7 +342,7 @@ export function SafeZoneTeacherAnalytics() {
                       fill="url(#colorPanico)" 
                     />
                   </AreaChart>
-                </ResponsiveContainer>
+                </SafeResponsiveContainer>
               </div>
 
               <p className="text-[9.5px] text-white/40 font-mono text-center tracking-normal leading-relaxed leading-none">

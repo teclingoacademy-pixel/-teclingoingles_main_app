@@ -43,6 +43,7 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
   const [pendingGoogleName, setPendingGoogleName] = useState('');
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const onLoginRef = useRef(onLogin);
+  const googleInitializedRef = useRef(false);
   onLoginRef.current = onLogin;
 
   const roleFromProfile = (perfil?: Record<string, unknown>): UserRole => {
@@ -91,6 +92,7 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
     if (!clientId || !googleButtonRef.current) return;
+    if (googleInitializedRef.current) return;
     const w = window as typeof window & { google?: { accounts?: { id?: { initialize: (config: Record<string, unknown>) => void; renderButton: (el: HTMLElement, config: Record<string, unknown>) => void; disableAutoSelect: () => void } } } };
 
     googleButtonRef.current.innerHTML = '';
@@ -109,6 +111,7 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
         logo_alignment: 'left',
         width: 280,
       });
+      googleInitializedRef.current = true;
     }
     return () => {
       if (googleButtonRef.current) {
