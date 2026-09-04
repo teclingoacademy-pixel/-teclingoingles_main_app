@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Users, 
   ChevronDown, 
@@ -35,6 +35,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
 import { useAppContext, Group } from '../context/AppContext';
+import { registrarAsistencia, obtenerAsistenciaGrupo, type RegistroAsistencia } from '../services/identityService';
 
 // Reusing User interface concept but simplified/expanded for context
 interface Student {
@@ -108,7 +109,7 @@ const getStudentGrades = (id: string): GradeRecord => {
 };
 
 export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (group: string) => void }) {
-  const { currentRole, groups, addGroup, deleteGroup, updateGroup, setQuickChatUser } = useAppContext();
+  const { currentRole, groups, addGroup, deleteGroup, updateGroup, setQuickChatUser, userEmail } = useAppContext();
   
   // Selection states
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -121,18 +122,63 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
   // State to track which group is currently "opened/expanded" to view its student roll-and-attendance panel
   const [openedGroupId, setOpenedGroupId] = useState<string | null>(null);
 
+  // Attendance date selector
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+
   // Daily attendance state for students in the session ('PRESENTE', 'AUSENTE', 'JUSTIFICADO', 'RETRASO', 'SIN_REGISTRO')
-  const [attendanceState, setAttendanceState] = useState<Record<string, 'PRESENTE' | 'AUSENTE' | 'JUSTIFICADO' | 'RETRASO' | 'SIN_REGISTRO'>>({
-    'USR-304-Z11': 'PRESENTE',
-    'USR-221-C99': 'SIN_REGISTRO',
-    'USR-001-A22': 'PRESENTE',
-    'USR-502-A81': 'RETRASO',
-    'USR-108-K12': 'JUSTIFICADO',
-    'STU-101': 'PRESENTE',
-    'STU-102': 'AUSENTE',
-    'STU-103': 'SIN_REGISTRO',
-    'STU-104': 'PRESENTE',
-  });
+  const [attendanceState, setAttendanceState] = useState<Record<string, 'PRESENTE' | 'AUSENTE' | 'JUSTIFICADO' | 'RETRASO' | 'SIN_REGISTRO'>>({});
+
+  // Load attendance from API when opened group or date changes
+  useEffect(() => {
+    if (!openedGroupId || !userEmail) {
+      setAttendanceState({});
+      return;
+    }
+    let cancelled = false;
+    const loadAttendance = async () => {
+      setAttendanceLoading(true);
+      try {
+        const records = await obtenerAsistenciaGrupo(userEmail, openedGroupId, attendanceDate);
+        if (cancelled) return;
+        const stateMap: Record<string, 'PRESENTE' | 'AUSENTE' | 'JUSTIFICADO' | 'RETRASO' | 'SIN_REGISTRO'> = {};
+        // Initialize all students as SIN_REGISTRO
+        const group = teacherGroupsList.find(g => g.id === openedGroupId);
+        if (group) {
+          group.studentIds.forEach(id => { stateMap[id] = 'SIN_REGISTRO'; });
+        }
+        // Apply loaded records
+        records.forEach((r: any) => {
+          if (r.user_id && r.estado) {
+            stateMap[r.user_id] = r.estado as any;
+          }
+        });
+        setAttendanceState(stateMap);
+      } catch (err) {
+        console.warn('[GroupManagement] loadAttendance error:', err);
+      } finally {
+        if (!cancelled) setAttendanceLoading(false);
+      }
+    };
+    loadAttendance();
+    return () => { cancelled = true; };
+  }, [openedGroupId, attendanceDate, userEmail]);
+
+  // Save attendance to API
+  const saveAttendance = useCallback(async (groupId: string, studentId: string, estado: 'PRESENTE' | 'AUSENTE' | 'JUSTIFICADO' | 'RETRASO') => {
+    if (!userEmail) return;
+    try {
+      const registros: RegistroAsistencia[] = [{
+        user_id: studentId,
+        email: studentId.toLowerCase().includes('@') ? studentId : `${studentId}@teclingo.edu`,
+        nombre: MASTER_STUDENTS_LIST[studentId]?.name || studentId,
+        estado,
+      }];
+      await registrarAsistencia(userEmail, groupId, registros, attendanceDate);
+    } catch (err) {
+      console.warn('[GroupManagement] saveAttendance error:', err);
+    }
+  }, [userEmail, attendanceDate]);
 
   const [newGroup, setNewGroup] = useState<Partial<Group>>({
     name: '',
@@ -583,6 +629,19 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                       <span>Nivel: <b className="text-white/60 font-semibold">{currentOpenedGroup.level}</b></span>
                       <span className="hidden sm:inline">•</span>
                       <span className="px-2 py-0.5 rounded-md bg-[#4ADE80]/15 text-[#4ADE80] font-black uppercase text-[8px] tracking-wider">{currentOpenedGroup.type || 'PRESENCIAL'}</span>
+                      <span className="hidden sm:inline">•</span>
+                      <div className="flex items-center gap-2">
+                        <Calendar size={12} className="text-white/30" />
+                        <input
+                          type="date"
+                          value={attendanceDate}
+                          onChange={(e) => setAttendanceDate(e.target.value)}
+                          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-[10px] font-bold outline-none focus:border-[#4ADE80]/40"
+                        />
+                        {attendanceLoading && (
+                          <span className="text-[8px] font-black text-[#4ADE80] animate-pulse uppercase tracking-widest">Cargando...</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -779,6 +838,7 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                             <button
                               onClick={() => {
                                 setAttendanceState(prev => ({ ...prev, [student.id]: 'PRESENTE' }));
+                                if (openedGroupId) saveAttendance(openedGroupId, student.id, 'PRESENTE');
                               }}
                               className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border ${
                                 currentStatus === 'PRESENTE' 
@@ -795,6 +855,7 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                             <button
                               onClick={() => {
                                 setAttendanceState(prev => ({ ...prev, [student.id]: 'AUSENTE' }));
+                                if (openedGroupId) saveAttendance(openedGroupId, student.id, 'AUSENTE');
                               }}
                               className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border ${
                                 currentStatus === 'AUSENTE' 
@@ -811,6 +872,7 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                             <button
                               onClick={() => {
                                 setAttendanceState(prev => ({ ...prev, [student.id]: 'JUSTIFICADO' }));
+                                if (openedGroupId) saveAttendance(openedGroupId, student.id, 'JUSTIFICADO');
                               }}
                               className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border ${
                                 currentStatus === 'JUSTIFICADO' 
@@ -827,6 +889,7 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                             <button
                               onClick={() => {
                                 setAttendanceState(prev => ({ ...prev, [student.id]: 'RETRASO' }));
+                                if (openedGroupId) saveAttendance(openedGroupId, student.id, 'RETRASO');
                               }}
                               className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border ${
                                 currentStatus === 'RETRASO' 
@@ -924,7 +987,10 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
                                   <div className="inline-flex rounded-xl overflow-hidden border border-white/5 bg-black/60 p-0.5 mt-0.5 shrink-0 select-none">
                                     {/* P: Presente (Green) */}
                                     <button
-                                      onClick={() => setAttendanceState(prev => ({ ...prev, [student.id]: 'PRESENTE' }))}
+                                      onClick={() => {
+                                        setAttendanceState(prev => ({ ...prev, [student.id]: 'PRESENTE' }));
+                                        if (openedGroupId) saveAttendance(openedGroupId, student.id, 'PRESENTE');
+                                      }}
                                       className={`w-7.5 h-7.5 flex items-center justify-center text-[10px] font-black tracking-widest transition-all rounded-lg ${
                                         currentStatus === 'PRESENTE'
                                           ? 'bg-emerald-500 text-black font-black shadow-[0_0_12px_rgba(16,185,129,0.3)]'
@@ -937,7 +1003,10 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
 
                                     {/* A: Ausente (Red) */}
                                     <button
-                                      onClick={() => setAttendanceState(prev => ({ ...prev, [student.id]: 'AUSENTE' }))}
+                                      onClick={() => {
+                                        setAttendanceState(prev => ({ ...prev, [student.id]: 'AUSENTE' }));
+                                        if (openedGroupId) saveAttendance(openedGroupId, student.id, 'AUSENTE');
+                                      }}
                                       className={`w-7.5 h-7.5 flex items-center justify-center text-[10px] font-black tracking-widest transition-all rounded-lg ${
                                         currentStatus === 'AUSENTE'
                                           ? 'bg-rose-500 text-black font-black shadow-[0_0_12px_rgba(244,63,94,0.3)]'
@@ -950,7 +1019,10 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
 
                                     {/* J: Justificado (Blue) */}
                                     <button
-                                      onClick={() => setAttendanceState(prev => ({ ...prev, [student.id]: 'JUSTIFICADO' }))}
+                                      onClick={() => {
+                                        setAttendanceState(prev => ({ ...prev, [student.id]: 'JUSTIFICADO' }));
+                                        if (openedGroupId) saveAttendance(openedGroupId, student.id, 'JUSTIFICADO');
+                                      }}
                                       className={`w-7.5 h-7.5 flex items-center justify-center text-[10px] font-black tracking-widest transition-all rounded-lg ${
                                         currentStatus === 'JUSTIFICADO'
                                           ? 'bg-blue-500 text-white font-black shadow-[0_0_12px_rgba(59,130,246,0.3)]'
@@ -963,7 +1035,10 @@ export function GroupManagement({ onTakeAttendance }: { onTakeAttendance?: (grou
 
                                     {/* R: Retraso (Yellow) */}
                                     <button
-                                      onClick={() => setAttendanceState(prev => ({ ...prev, [student.id]: 'RETRASO' }))}
+                                      onClick={() => {
+                                        setAttendanceState(prev => ({ ...prev, [student.id]: 'RETRASO' }));
+                                        if (openedGroupId) saveAttendance(openedGroupId, student.id, 'RETRASO');
+                                      }}
                                       className={`w-7.5 h-7.5 flex items-center justify-center text-[10px] font-black tracking-widest transition-all rounded-lg ${
                                         currentStatus === 'RETRASO'
                                           ? 'bg-amber-500 text-black font-black shadow-[0_0_12px_rgba(245,158,11,0.3)]'

@@ -59,9 +59,11 @@ import { AcademicCatalog } from './AcademicCatalog';
 import { GroupManager } from './GroupManager';
 import { DirectorLibrary } from './DirectorLibrary';
 import { GruposInglesDirector } from './GruposInglesDirector';
+import { InstitutionalCalendar } from './InstitutionalCalendar';
 import { RealTimeMonitorPanel } from './RealTimeMonitorPanel';
-import { LibroVirtualDirectorCompleto } from './LibroVirtualDirectorCompleto';
+import { LibroVirtual } from './LibroVirtual';
 import { AccessControlModule } from './AccessControlModule';
+import { AsistenciasMaster } from './AsistenciasMaster';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
 
@@ -160,7 +162,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
   };
 
   const isViewDisabled = (view: string) => {
-    const academicViewsList = ['biblioteca', 'teachers', 'groups', 'gestor-horarios', 'bi'];
+    const academicViewsList = ['biblioteca', 'teachers', 'groups', 'gestor-horarios', 'bi', 'asistencias'];
     const managementViewsList = ['operations', 'users', 'audit', 'folios', 'alerts', 'mensajes'];
     
     if (academicViewsList.includes(view) && !coursesEnabled) return true;
@@ -180,12 +182,14 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     { id: 'settings', label: 'Settings', icon: SettingsIcon, category: 'Soporte & Global' },
 
     { id: 'groups', label: 'Grados y Grupos', icon: Users, badge: 'DEMANDA', category: 'Académico', isPrincipal: true },
+    { id: 'asistencias', label: 'Asistencias', icon: UserCheck, badge: 'CONTROL', category: 'Académico' },
     { id: 'grupos-ingles', label: 'Grupos Inglés (CLE)', icon: Languages, category: 'Académico' },
     { id: 'biblioteca', label: 'Biblioteca Directiva', icon: Library, category: 'Académico' },
     { id: 'teachers', label: 'Plantilla Docente', icon: UserCheck, category: 'Académico' },
     { id: 'bi', label: 'Academic BI', icon: BarChart3, badge: 'REAL-TIME', category: 'Académico' },
 
     { id: 'operations', label: 'Operations Control', icon: Sliders, category: 'Operaciones', isPrincipal: true },
+    { id: 'calendario', label: 'Calendario Institucional', icon: Calendar, badge: 'EDITABLE', category: 'Operaciones' },
     { id: 'users', label: 'User Master', icon: Database, category: 'Operaciones' },
     { id: 'folios', label: 'Gestión Folios', icon: FileText, badge: 'OFFICIAL', category: 'Operaciones' },
     { id: 'control-accesos', label: 'Control de Accesos', icon: Lock, badge: 'ESTRICTO', category: 'Operaciones' },
@@ -374,7 +378,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
               ) : currentView === 'biblioteca' ? (
                 <DirectorLibrary />
               ) : currentView === 'libro-maestro' ? (
-                <LibroVirtualDirectorCompleto />
+                <LibroVirtual role="director" lessonId="N1-C01" />
               ) : currentView === 'catalog' ? (
                 <AcademicCatalog />
               ) : currentView === 'teachers' ? (
@@ -387,8 +391,12 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
                 />
               ) : currentView === 'grupos-ingles' ? (
                 <GruposInglesDirector />
+              ) : currentView === 'asistencias' ? (
+                <AsistenciasMaster />
               ) : currentView === 'operations' ? (
                 <OperationalCommand />
+              ) : currentView === 'calendario' ? (
+                <InstitutionalCalendar />
               ) : currentView === 'users' ? (
                 <UsersMaster />
               ) : currentView === 'audit' ? (

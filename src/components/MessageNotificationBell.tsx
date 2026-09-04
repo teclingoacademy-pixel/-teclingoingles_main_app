@@ -4,9 +4,10 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Bell, MessageCircle, X, Users, Crown, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Bell, MessageCircle, X, Users, Crown, MessageSquare, ChevronDown, ChevronUp, Calendar, Star, Zap, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
+import { fetchCalendarEvents, type CalendarEvent } from '../services/calendarService';
 
 interface MessageNotificationBellProps {
   onNavigateToChat: (chatId: string) => void;
@@ -14,10 +15,12 @@ interface MessageNotificationBellProps {
 }
 
 export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF9A' }: MessageNotificationBellProps) {
-  const { chats, userEmail, markChatAsRead } = useAppContext();
+  const { chats, userEmail, markChatAsRead, currentRole } = useAppContext();
   const [expanded, setExpanded] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
   const chatsWithUnread = useMemo(() => {
     return chats
@@ -26,6 +29,39 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
   }, [chats]);
 
   const totalUnread = chatsWithUnread.reduce((sum, c) => sum + c.unreadCount, 0);
+
+  const today = new Date();
+
+  const upcomingCalendarEvents = useMemo(() => {
+    return calendarEvents
+      .filter(e => {
+        const eventDate = new Date(e.year, e.month - 1, e.day);
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        if (eventDate < todayStart) return false;
+        if (e.visibility.includes('GLOBAL')) return true;
+        return e.visibility.includes(currentRole as any);
+      })
+      .sort((a, b) => {
+        const da = new Date(a.year, a.month - 1, a.day);
+        const db = new Date(b.year, b.month - 1, b.day);
+        return da.getTime() - db.getTime();
+      });
+  }, [calendarEvents, currentRole]);
+
+  const calendarAlertCount = upcomingCalendarEvents.length;
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const events = await fetchCalendarEvents(today.getFullYear(), today.getMonth() + 1);
+        if (!cancelled) setCalendarEvents(events);
+      } catch { /* silent */ }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     if (!expanded) return;
@@ -46,18 +82,20 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
 
   if (!userEmail) return null;
 
+  const totalBadge = totalUnread + calendarAlertCount;
+
   if (minimized) {
     return (
       <div ref={containerRef} className="fixed top-4 right-4 z-[200]">
         <button
           onClick={() => { setMinimized(false); setExpanded(true); }}
-          title="Mostrar mensajes"
+          title="Mostrar notificaciones"
           className="relative w-10 h-10 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:border-white/20 transition-all shadow-lg"
         >
           <MessageSquare size={16} />
-          {totalUnread > 0 && (
+          {totalBadge > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center shadow-[0_0_10px_rgba(239,68,68,0.5)] border-2 border-[#061a1a] animate-pulse">
-              {totalUnread > 99 ? '99+' : totalUnread}
+              {totalBadge > 99 ? '99+' : totalBadge}
             </span>
           )}
         </button>
@@ -71,26 +109,26 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
         {/* Bell Button */}
         <button
           onClick={() => setExpanded(o => !o)}
-          title="Mensajes"
-          aria-label="Mensajes"
+          title="Notificaciones"
+          aria-label="Notificaciones"
           className="relative w-11 h-11 rounded-xl bg-black/60 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all active:scale-95 shadow-lg"
         >
           <Bell size={18} />
           <AnimatePresence>
-            {totalUnread > 0 && (
+            {totalBadge > 0 && (
               <motion.span
-                key={totalUnread}
+                key={totalBadge}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 25 }}
                 className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center shadow-[0_0_12px_rgba(239,68,68,0.6)] border-2 border-[#061a1a]"
               >
-                {totalUnread > 99 ? '99+' : totalUnread}
+                {totalBadge > 99 ? '99+' : totalBadge}
               </motion.span>
             )}
           </AnimatePresence>
-          {totalUnread > 0 && (
+          {totalBadge > 0 && (
             <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
           )}
         </button>
@@ -112,17 +150,17 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.96 }}
               transition={{ duration: 0.15 }}
-              className="w-[min(360px,calc(100vw-2rem))] max-h-[60vh] bg-[#0a0f1a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="w-[min(360px,calc(100vw-2rem))] max-h-[70vh] bg-[#0a0f1a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
                 <div className="flex items-center gap-2">
-                  <MessageCircle size={14} style={{ color: accentColor }} />
+                  <Bell size={14} style={{ color: accentColor }} />
                   <span className="text-white text-[11px] font-black uppercase tracking-widest">
-                    Mensajes
+                    Notificaciones
                   </span>
-                  {totalUnread > 0 && (
+                  {totalBadge > 0 && (
                     <span className="text-[8px] font-black text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-full">
-                      {totalUnread} NUEVOS
+                      {totalBadge} NUEVAS
                     </span>
                   )}
                 </div>
@@ -134,70 +172,153 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
                 </button>
               </div>
 
-              <div className="overflow-y-auto max-h-[50vh] custom-scrollbar">
-                {chatsWithUnread.length === 0 ? (
+              <div className="overflow-y-auto max-h-[60vh] custom-scrollbar">
+                {/* ── SECCION: EVENTOS DEL CALENDARIO ── */}
+                {upcomingCalendarEvents.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 bg-white/[0.03] border-b border-white/5 flex items-center gap-2">
+                      <Calendar size={12} style={{ color: accentColor }} />
+                      <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: accentColor }}>
+                        Eventos del Calendario
+                      </span>
+                      <span className="text-[8px] font-black text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full ml-auto">
+                        {upcomingCalendarEvents.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {upcomingCalendarEvents.slice(0, 5).map(event => (
+                        <div
+                          key={event.id}
+                          className="w-full px-4 py-3 hover:bg-white/[0.04] transition-colors flex items-start gap-3 group"
+                        >
+                          <div className="relative shrink-0">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                              event.type === 'SCHOOL' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
+                              event.type === 'HOLIDAY' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                              'bg-[#DEFF9A]/10 border-[#DEFF9A]/20 text-[#DEFF9A]'
+                            }`}>
+                              {event.type === 'SCHOOL' ? <Award size={16} /> :
+                               event.type === 'HOLIDAY' ? <Star size={16} /> :
+                               <Zap size={16} />}
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                              <p className="text-white text-[11px] font-black uppercase tracking-tight truncate">
+                                {event.title}
+                              </p>
+                              <span className="text-[8px] text-white/30 uppercase tracking-widest shrink-0">
+                                {event.time || 'Todo el dia'}
+                              </span>
+                            </div>
+                            <p className="text-white/50 text-[10px] truncate leading-snug">
+                              {event.description || 'Sin descripcion'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                event.type === 'SCHOOL' ? 'bg-cyan-500/20 text-cyan-400' :
+                                event.type === 'HOLIDAY' ? 'bg-orange-500/20 text-orange-400' :
+                                'bg-[#DEFF9A]/20 text-[#DEFF9A]'
+                              }`}>
+                                {event.type === 'SCHOOL' ? 'Escolar' :
+                                 event.type === 'HOLIDAY' ? 'Asueto' : 'TECLINGO'}
+                              </span>
+                              <span className="text-white/20 text-[8px]">
+                                {event.day}/{event.month}/{event.year}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {upcomingCalendarEvents.length > 5 && (
+                      <div className="px-4 py-2 border-t border-white/5 bg-white/[0.02]">
+                        <p className="text-white/30 text-[8px] text-center font-bold uppercase tracking-widest">
+                          +{upcomingCalendarEvents.length - 5} eventos mas
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── SECCION: MENSAJES ── */}
+                {chatsWithUnread.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 bg-white/[0.03] border-b border-white/5 flex items-center gap-2">
+                      <MessageCircle size={12} className="text-blue-400" />
+                      <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">
+                        Mensajes
+                      </span>
+                      <span className="text-[8px] font-black text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full ml-auto">
+                        {totalUnread}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {chatsWithUnread.map(chat => (
+                        <button
+                          key={chat.id}
+                          onClick={() => handleChatClick(chat.id)}
+                          className="w-full text-left px-4 py-3 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors flex items-start gap-3 group"
+                        >
+                          <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 group-hover:text-white group-hover:border-white/20 transition-all">
+                              {chat.type === 'GROUP' ? <Users size={16} /> :
+                               chat.type === 'GLOBAL' ? <Crown size={16} /> :
+                               <MessageCircle size={16} />}
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center border-2 border-[#0a0f1a]">
+                              {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                              <p className="text-white text-[11px] font-black uppercase tracking-tight truncate group-hover:text-[color:var(--accent)] transition-colors" style={{ '--accent': accentColor } as React.CSSProperties}>
+                                {chat.name}
+                              </p>
+                              <span className="text-[8px] text-white/30 uppercase tracking-widest shrink-0">
+                                {chat.lastMessage?.slice(0, 20) || ''}
+                              </span>
+                            </div>
+                            <p className="text-white/50 text-[10px] truncate leading-snug">
+                              {chat.lastMessage || 'Nuevo mensaje'}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                chat.type === 'GLOBAL' ? 'bg-orange-500/20 text-orange-400' :
+                                chat.type === 'GROUP' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
+                                'bg-blue-500/20 text-blue-400'
+                              }`}>
+                                {chat.type}
+                              </span>
+                              <span className="text-white/20 text-[8px]">
+                                {chat.unreadCount} {chat.unreadCount === 1 ? 'mensaje' : 'mensajes'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── EMPTY STATE ── */}
+                {chatsWithUnread.length === 0 && upcomingCalendarEvents.length === 0 && (
                   <div className="py-10 px-6 text-center space-y-3">
-                    <MessageSquare size={28} className="text-white/10 mx-auto" />
+                    <Bell size={28} className="text-white/10 mx-auto" />
                     <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">
-                      Sin mensajes nuevos
+                      Sin notificaciones nuevas
                     </p>
                     <p className="text-white/15 text-[9px]">
-                      Tus conversaciones estan al dia
+                      Todo esta al dia
                     </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-white/5">
-                    {chatsWithUnread.map(chat => (
-                      <button
-                        key={chat.id}
-                        onClick={() => handleChatClick(chat.id)}
-                        className="w-full text-left px-4 py-3 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors flex items-start gap-3 group"
-                      >
-                        <div className="relative shrink-0">
-                          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 group-hover:text-white group-hover:border-white/20 transition-all">
-                            {chat.type === 'GROUP' ? <Users size={16} /> :
-                             chat.type === 'GLOBAL' ? <Crown size={16} /> :
-                             <MessageCircle size={16} />}
-                          </div>
-                          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center border-2 border-[#0a0f1a]">
-                            {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                            <p className="text-white text-[11px] font-black uppercase tracking-tight truncate group-hover:text-[color:var(--accent)] transition-colors" style={{ '--accent': accentColor } as React.CSSProperties}>
-                              {chat.name}
-                            </p>
-                            <span className="text-[8px] text-white/30 uppercase tracking-widest shrink-0">
-                              {chat.lastMessage?.slice(0, 20) || ''}
-                            </span>
-                          </div>
-                          <p className="text-white/50 text-[10px] truncate leading-snug">
-                            {chat.lastMessage || 'Nuevo mensaje'}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
-                              chat.type === 'GLOBAL' ? 'bg-orange-500/20 text-orange-400' :
-                              chat.type === 'GROUP' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
-                              'bg-blue-500/20 text-blue-400'
-                            }`}>
-                              {chat.type}
-                            </span>
-                            <span className="text-white/20 text-[8px]">
-                              {chat.unreadCount} {chat.unreadCount === 1 ? 'mensaje' : 'mensajes'}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
                   </div>
                 )}
               </div>
 
-              {chatsWithUnread.length > 0 && (
+              {totalBadge > 0 && (
                 <div className="px-4 py-2.5 border-t border-white/10 bg-white/[0.02]">
                   <p className="text-white/30 text-[8px] text-center font-bold uppercase tracking-widest">
-                    Click en un chat para abrirlo
+                    {chatsWithUnread.length > 0 ? 'Click en un chat para abrirlo' : 'Revisa tus eventos'}
                   </p>
                 </div>
               )}

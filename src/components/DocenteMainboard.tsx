@@ -46,7 +46,7 @@ import { PlanningModule } from './PlanningModule';
 import { EvidenceModule } from './EvidenceModule';
 import { FoliosDocente } from './FoliosDocente';
 import { DocenteReconocimiento } from './DocenteReconocimiento';
-import { LibroVirtualDirectorCompleto } from './LibroVirtualDirectorCompleto';
+import { LibroVirtual } from './LibroVirtual';
 import { AvailabilityModule } from './AvailabilityModule';
 import { InstitutionalCalendar } from './InstitutionalCalendar';
 import { TeacherSchedules } from './TeacherSchedules';
@@ -63,7 +63,8 @@ import { QuickChat } from './QuickChat';
 import { MessageNotificationBell } from './MessageNotificationBell';
 import { TeacherGrades } from './TeacherGrades';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
-import { obtenerPerfilCompleto } from '../services/identityService';
+import { obtenerPerfilCompleto, listarGruposIngles, obtenerMiembrosDeGrupo } from '../services/identityService';
+import type { GrupoIngles, MiembroGrupo } from '../services/identityService';
 
 interface DocenteMainboardProps {
   currentRole: UserRole;
@@ -87,80 +88,9 @@ interface GroupData {
   type: 'PRESENCIAL' | 'VIRTUAL';
   topic: string;
   students: AlumnoAsistencia[];
+  grupo_id: string;
+  nivel: string;
 }
-
-const groupsDataset: GroupData[] = [
-  {
-    id: 'A1-102',
-    name: 'Basic English Lab',
-    room: 'Aula 4-A',
-    schedule: '08:00 - 09:40',
-    timeStart: '08:00',
-    timeEnd: '09:40',
-    type: 'PRESENCIAL',
-    topic: 'Roleplay: Airport and Greetings',
-    students: [
-      { id: '1', name: 'Juan P.', present: true, photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' },
-      { id: '2', name: 'Maria G.', present: true, photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop' },
-      { id: '3', name: 'Luis M.', present: false, photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop' },
-      { id: '4', name: 'Ana S.', present: true, photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop' },
-      { id: '5', name: 'Pedro R.', present: false, photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop' },
-      { id: '6', name: 'Sofia L.', present: true, photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' },
-      { id: '7', name: 'Héctor V.', present: false, photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop' },
-      { id: '8', name: 'Elena D.', present: true, photo: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop' },
-    ]
-  },
-  {
-    id: 'B2-205',
-    name: 'Everyday Dialogue Practice',
-    room: 'Zoom Lab 2',
-    schedule: '10:00 - 11:40',
-    timeStart: '10:00',
-    timeEnd: '11:40',
-    type: 'VIRTUAL',
-    topic: 'Verbal expressions and shopping vocabulary',
-    students: [
-      { id: '11', name: 'Robert G.', present: true, photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop' },
-      { id: '12', name: 'Emily W.', present: true, photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' },
-      { id: '13', name: 'Albert J.', present: false, photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop' },
-      { id: '14', name: 'Charles S.', present: true, photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop' },
-      { id: '15', name: 'Diana K.', present: false, photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop' },
-    ]
-  },
-  {
-    id: 'B1-105',
-    name: 'Grammar in Everyday Context',
-    room: 'Aula Central',
-    schedule: '14:00 - 15:40',
-    timeStart: '14:00',
-    timeEnd: '15:40',
-    type: 'PRESENCIAL',
-    topic: 'Possessives & Family Relationship Dialogue',
-    students: [
-      { id: '21', name: 'Fernando T.', present: true, photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop' },
-      { id: '22', name: 'Patricia L.', present: false, photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' },
-      { id: '23', name: 'Hugo B.', present: true, photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop' },
-      { id: '24', name: 'Monica G.', present: true, photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop' },
-      { id: '25', name: 'Iván S.', present: false, photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop' },
-    ]
-  },
-  {
-    id: 'C1-302',
-    name: 'Advanced Speech & Fluency Lab',
-    room: 'Auditorio',
-    schedule: '09:00 - 10:40',
-    timeStart: '09:00',
-    timeEnd: '10:40',
-    type: 'PRESENCIAL',
-    topic: 'Capitalization Rules & Speech patterns under 50s',
-    students: [
-      { id: '31', name: 'Guillermo F.', present: true, photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop' },
-      { id: '32', name: 'Adriana N.', present: true, photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop' },
-      { id: '33', name: 'Julio C.', present: true, photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop' },
-      { id: '34', name: 'Liliana M.', present: false, photo: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop' },
-    ]
-  }
-];
 
 export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboardProps) {
   const { 
@@ -182,72 +112,74 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
   const [teacherProfileData, setTeacherProfileData] = useState<Record<string, unknown>>({});
   
   // Custom states for group selection and auto-swapping schedule logic
-  const [groups, setGroups] = useState<GroupData[]>(groupsDataset);
+  const [groups, setGroups] = useState<GroupData[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
   const [currentGroupIdx, setCurrentGroupIdx] = useState<number>(0);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState<boolean>(false);
   const [isAutoScheduleMode, setIsAutoScheduleMode] = useState<boolean>(true); // Option 1
   const [elapsedMinutes, setElapsedMinutes] = useState<number>(0); // 0 to 50 min
 
-  // Help map student IDs from custom groups to high-fidelity profile images and names
-  const getStudentMockData = (id: string) => {
-    const map: Record<string, { name: string; photo: string }> = {
-      'USR-304-Z11': { name: 'Juan Pérez', photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' },
-      'USR-221-C99': { name: 'Sofía Méndez', photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop' },
-      'USR-001-A22': { name: 'Carlos Mendoza', photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop' },
-      'USR-502-A81': { name: 'Mateo Sandoval', photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop' },
-      'USR-108-K12': { name: 'Valentina Rojas', photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop' },
-      'STU-101': { name: 'Camila Blanco', photo: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop' },
-      'STU-102': { name: 'Esteban Paredes', photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop' },
-      'STU-103': { name: 'Lucía Fernández', photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop' },
-      'STU-104': { name: 'Guillermo Fraustro', photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop' },
-      'USR-001': { name: 'Aline Gutiérrez', photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop' },
-      'USR-002': { name: 'Jorge Montes', photo: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop' },
-    };
-    return map[id] || { name: `Estudiante ${id.replace('USR-', '').replace('STU-', '')}`, photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop' };
-  };
-
-  // Keep local groups dataset synchronized with any groups created in the Director panel
+  // Load real groups from API
   useEffect(() => {
-    if (!contextGroups) return;
-    setGroups(prev => {
-      const updated = [...groupsDataset];
-      contextGroups.forEach(cg => {
-        // Only append if it's not already in the list
-        if (updated.some(g => g.id === cg.id)) return;
-
-        const studentsList = (cg.studentIds || []).map((sId) => {
-          const detail = getStudentMockData(sId);
-          return {
-            id: sId,
-            name: detail.name,
-            present: false, // default in progress state
-            photo: detail.photo
-          };
-        });
-
-        if (studentsList.length === 0) {
-          // Add default students if the group was created empty
-          studentsList.push(
-            { id: 'USR-304-Z11', name: 'Juan Pérez', present: true, photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' },
-            { id: 'USR-221-C99', name: 'Sofía Méndez', present: false, photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop' }
-          );
+    if (!userEmail) return;
+    let cancelled = false;
+    const loadGroups = async () => {
+      setLoadingGroups(true);
+      try {
+        const apiGrupos = await listarGruposIngles(userEmail);
+        if (cancelled) return;
+        
+        const mappedGroups: GroupData[] = [];
+        
+        for (const g of apiGrupos) {
+          // Load members for each group
+          let members: MiembroGrupo[] = [];
+          try {
+            members = await obtenerMiembrosDeGrupo(userEmail, g.grupo_id);
+          } catch {}
+          
+          if (cancelled) return;
+          
+          const students: AlumnoAsistencia[] = members.map(m => ({
+            id: m.user_id,
+            name: m.nombre || m.email,
+            present: false,
+            photo: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop`
+          }));
+          
+          // Parse schedule from horario field (format: "HH:MM-HH:MM" or "HH:MM - HH:MM")
+          const horarioRaw = g.horario || '';
+          const timeMatch = horarioRaw.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+          const timeStart = timeMatch ? timeMatch[1] : '08:00';
+          const timeEnd = timeMatch ? timeMatch[2] : '09:40';
+          
+          mappedGroups.push({
+            id: g.code_id || g.grupo_id,
+            name: g.nombre || `Grupo ${g.grupo}`,
+            room: g.turno === 'VIRTUAL' ? 'Zoom Lab' : 'Aula',
+            schedule: `${timeStart} - ${timeEnd}`,
+            timeStart,
+            timeEnd,
+            type: (g.turno === 'VIRTUAL' ? 'VIRTUAL' : 'PRESENCIAL') as 'PRESENCIAL' | 'VIRTUAL',
+            topic: `Nivel ${g.nivel} — ${g.nombre}`,
+            students,
+            grupo_id: g.grupo_id,
+            nivel: g.nivel,
+          });
         }
-
-        updated.push({
-          id: cg.id,
-          name: cg.name,
-          room: 'Aula Virtual C',
-          schedule: cg.time ? `${cg.time} - ${cg.days?.join(', ') || 'LUN'}` : '16:00 - 17:40',
-          timeStart: cg.time ? cg.time.split(' ')[0] : '16:00',
-          timeEnd: '17:40',
-          type: 'VIRTUAL',
-          topic: 'English Proficiency diagnostics',
-          students: studentsList
-        });
-      });
-      return updated;
-    });
-  }, [contextGroups]);
+        
+        if (!cancelled) {
+          setGroups(mappedGroups);
+          setLoadingGroups(false);
+        }
+      } catch (err) {
+        console.warn('[DocenteMainboard] Error loading groups:', err);
+        if (!cancelled) setLoadingGroups(false);
+      }
+    };
+    loadGroups();
+    return () => { cancelled = true; };
+  }, [userEmail]);
   
   const [isScanning, setIsScanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -390,6 +322,19 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                 />
               ) : currentView === 'dashboard' ? (
                 <>
+                  {loadingGroups ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <div className="w-12 h-12 border-4 border-[#4ADE80]/30 border-t-[#4ADE80] rounded-full animate-spin mb-4" />
+                      <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Cargando tus grupos...</p>
+                    </div>
+                  ) : groups.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <Users size={48} className="text-white/20 mb-4" />
+                      <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">No tienes grupos asignados</p>
+                      <p className="text-white/20 text-[9px] font-bold uppercase tracking-widest mt-2">Contacta al administrador para asignarte grupos</p>
+                    </div>
+                  ) : (
+                    <>
                   {lastClassSwapNotification && (
                     <motion.div 
                       initial={{ opacity: 0, y: -20 }}
@@ -686,7 +631,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
 
                            </div>
 
-                           <div className="flex flex-col justify-center">
+                           <div className="flex flex-col justify-center gap-3">
                                <button 
                                  onClick={() => setIsScanning(true)}
                                  className={`w-full lg:w-auto text-[#061a1a] rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center gap-4 transition-all group overflow-hidden relative min-h-[140px] ${isAutoScheduleMode ? 'bg-[#4ADE80] hover:shadow-[0_0_30px_rgba(74,222,128,0.35)]' : 'bg-[#22D3EE] hover:shadow-[0_0_30px_rgba(34,211,238,0.35)]'}`}
@@ -694,6 +639,13 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                                  <QrCode size={40} className="group-hover:scale-110 transition-transform md:size-48" />
                                  <span className="text-[10px] md:text-[12px] font-black uppercase tracking-widest">Pase de Lista (QR)</span>
                                  <div className="absolute top-0 left-0 w-full h-[2px] bg-white opacity-20 animate-scan pointer-events-none" />
+                               </button>
+                               <button 
+                                 onClick={() => setSelectedGroupForAttendance(activeGroup?.grupo_id || activeGroup?.id || null)}
+                                 className="w-full lg:w-auto bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white rounded-3xl p-4 md:p-5 flex flex-col items-center justify-center gap-2 transition-all"
+                               >
+                                 <ClipboardList size={24} className="text-white/40" />
+                                 <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white/60">Pase de Lista Manual</span>
                                </button>
                            </div>
                          </div>
@@ -776,6 +728,8 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                       </GlassCard>
                     </div>
                   </div>
+                    </>
+                  )}
                 </>
               ) : currentView === 'academic' ? (
                 <StudentAcademicActivity role="DOCENTE" />
@@ -796,7 +750,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
               ) : currentView === 'planeacion' ? (
                 <PlanningModule />
               ) : currentView === 'libro-maestro' ? (
-                <LibroVirtualDirectorCompleto />
+                <LibroVirtual role="docente" lessonId="N1-C01" />
               ) : currentView === 'safe-zone' ? (
                 <SafeZoneTeacherAnalytics />
               ) : currentView === 'evidencias' ? (

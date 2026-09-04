@@ -37,14 +37,15 @@ import {
   Sliders,
   Loader2,
   Copy,
-  Check
+  Check,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { QRCodeSVG } from 'qrcode.react';
 import { GlassCard } from './GlassCard';
 import { useAppContext, UserRole } from '../context/AppContext';
 import { ModuleManagement } from './ModuleManagement';
-import { guardarPerfil, obtenerPerfilCompleto, uploadAvatar, misGruposIngles, listarHorariosDisponiblesDocente } from '../services/identityService';
+import { guardarPerfil, obtenerPerfilCompleto, uploadAvatar, uploadCertificationDocument, misGruposIngles, listarHorariosDisponiblesDocente } from '../services/identityService';
 
 export function UserSettings({ 
   role, 
@@ -93,6 +94,9 @@ export function UserSettings({
   const [newCertName, setNewCertName] = useState('');
   const [newCertDate, setNewCertDate] = useState('');
   const [newCertUrl, setNewCertUrl] = useState('');
+  const [certFile, setCertFile] = useState<File | null>(null);
+  const [isUploadingCert, setIsUploadingCert] = useState(false);
+  const certFileInputRef = useRef<HTMLInputElement>(null);
 
   // Copiar código institucional al portapapeles
   const copiarCodigo = async () => {
@@ -124,14 +128,77 @@ export function UserSettings({
     }
   };
 
-  // Agregar nueva certificación
-  const handleAddCertification = () => {
+  // Agregar nueva certificación (con soporte de subida de archivo)
+  const handleAddCertification = async () => {
     if (!newCertName.trim()) return;
+
+    const effectiveRole = role || contextRole || 'DOCENTE';
+
+    // Si hay archivo seleccionado, subirlo a Google Drive primero
+    let fileUrl = newCertUrl.trim() || undefined;
+    let fileId: string | undefined;
+    let fileType: string | undefined;
+
+    if (certFile) {
+      if (!userEmail) {
+        setToastMessage('Sin email de sesión — vuelve a iniciar sesión');
+        setShowToast(true);
+        return;
+      }
+
+      // Validar tamaño (10MB)
+      if (certFile.size > 10 * 1024 * 1024) {
+        setToastMessage('El archivo no debe exceder 10MB');
+        setShowToast(true);
+        return;
+      }
+
+      setIsUploadingCert(true);
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(certFile);
+        });
+
+        const result = await uploadCertificationDocument(
+          userEmail,
+          base64,
+          certFile.name,
+          certFile.type,
+          effectiveRole
+        );
+
+        if (result.ok && result.fileUrl) {
+          fileUrl = result.fileUrl;
+          fileId = result.fileId;
+          fileType = certFile.type;
+          setToastMessage('Archivo subido a Google Drive');
+          setShowToast(true);
+        } else {
+          setToastMessage('Error al subir archivo: ' + (result.error || 'desconocido'));
+          setShowToast(true);
+          setIsUploadingCert(false);
+          return;
+        }
+      } catch (err) {
+        console.error('[CertUpload]', err);
+        setToastMessage('Error al procesar el archivo');
+        setShowToast(true);
+        setIsUploadingCert(false);
+        return;
+      }
+      setIsUploadingCert(false);
+    }
+
     const newCert = {
       id: `CERT-${Date.now()}`,
       name: newCertName.trim().toUpperCase(),
       date: newCertDate || new Date().toISOString().slice(0, 10),
-      url: newCertUrl.trim() || undefined,
+      url: fileUrl,
+      fileId: fileId,
+      fileType: fileType,
     };
     setTeacherData(prev => ({
       ...prev,
@@ -142,6 +209,8 @@ export function UserSettings({
     setNewCertName('');
     setNewCertDate('');
     setNewCertUrl('');
+    setCertFile(null);
+    if (certFileInputRef.current) certFileInputRef.current.value = '';
     setToastMessage('Certificación agregada. Guarda para sincronizar.');
     setShowToast(true);
   };
@@ -388,7 +457,7 @@ export function UserSettings({
     dir_carreras: [] as string[],
     dir_turnos: [] as string[],
     dir_modalidad: '',
-    certifications: [] as { id: string; name: string; date: string; url?: string }[],
+    certifications: [] as { id: string; name: string; date: string; url?: string; fileId?: string; fileType?: string }[],
     years_of_experience: 0,
   });
 
@@ -1969,7 +2038,7 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                               </button>
                            </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                                <AnimatePresence>
                                   {teacherData.certifications.map(cert => (
                                      <motion.div 
@@ -1979,11 +2048,20 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                        className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-black/40 border border-white/5 flex items-center justify-between group"
                                      >
                                         <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
-                                           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/5 flex items-center justify-center text-[#DEFF9A] shrink-0">
+                                           <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 ${
+                                             cert.fileId ? 'bg-[#DEFF9A]/10 text-[#DEFF9A]' : 'bg-white/5 text-white/40'
+                                           }`}>
                                               <FileText size={16} />
                                            </div>
                                            <div className="min-w-0">
-                                              <p className="text-white text-[9px] sm:text-[10px] font-black uppercase truncate">{cert.name}</p>
+                                              <div className="flex items-center gap-1.5">
+                                                <p className="text-white text-[9px] sm:text-[10px] font-black uppercase truncate">{cert.name}</p>
+                                                {cert.fileId && (
+                                                  <span className="text-[6px] font-black text-[#DEFF9A] bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 px-1 py-0.5 rounded uppercase tracking-widest shrink-0">
+                                                    DRIVE
+                                                  </span>
+                                                )}
+                                              </div>
                                               <p className="text-white/20 text-[7px] sm:text-[8px] font-bold uppercase tracking-widest">DESDE: {cert.date}</p>
                                            </div>
                                         </div>
@@ -1991,6 +2069,7 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                             <button 
                                               onClick={() => handleDownloadCertification(cert)}
                                               className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all"
+                                              title={cert.url ? 'Ver documento' : 'Sin documento adjunto'}
                                             >
                                                <Download size={12} />
                                             </button>
@@ -2512,7 +2591,7 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  onClick={() => setShowCertModal(false)}
+                  onClick={() => { setShowCertModal(false); setCertFile(null); }}
                   className="absolute inset-0 bg-[#020b18]/80 backdrop-blur-md"
                 />
                 <motion.div 
@@ -2526,7 +2605,7 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                          <span className="text-[#DEFF9A] text-[7px] sm:text-[8px] font-black uppercase tracking-[0.3em]">Nueva Certificación</span>
                          <h3 className="text-white text-base sm:text-xl font-black italic tracking-tight uppercase mt-1">Agregar Documento</h3>
                       </div>
-                      <button onClick={() => setShowCertModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all border border-white/5">
+                      <button onClick={() => { setShowCertModal(false); setCertFile(null); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all border border-white/5">
                          <X size={14} />
                       </button>
                    </div>
@@ -2551,22 +2630,108 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                           className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all"
                         />
                       </div>
+
+                      {/* Separador */}
+                      <div className="flex items-center gap-3 py-1">
+                        <div className="flex-1 h-px bg-white/10" />
+                        <span className="text-[7px] font-black text-white/20 uppercase tracking-widest">Documento</span>
+                        <div className="flex-1 h-px bg-white/10" />
+                      </div>
+
+                      {/* Zona de subida de archivo */}
                       <div>
-                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">Enlace al Documento (opcional)</label>
+                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">
+                          Archivo (PDF, imagen, documento)
+                        </label>
+                        <div 
+                          onClick={() => !isUploadingCert && certFileInputRef.current?.click()}
+                          className={`relative w-full border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                            certFile 
+                              ? 'border-[#DEFF9A]/40 bg-[#DEFF9A]/5' 
+                              : 'border-white/10 bg-[#0d0e12] hover:border-white/20 hover:bg-white/[0.02]'
+                          } ${isUploadingCert ? 'pointer-events-none opacity-60' : ''}`}
+                        >
+                          <input
+                            ref={certFileInputRef}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                            className="hidden"
+                            disabled={isUploadingCert}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 10 * 1024 * 1024) {
+                                  setToastMessage('El archivo no debe exceder 10MB');
+                                  setShowToast(true);
+                                  e.target.value = '';
+                                  return;
+                                }
+                                setCertFile(file);
+                                // Auto-llenar nombre si está vacío
+                                if (!newCertName.trim()) {
+                                  setNewCertName(file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' '));
+                                }
+                              }
+                            }}
+                          />
+                          {certFile ? (
+                            <div className="space-y-2">
+                              <div className="w-10 h-10 mx-auto rounded-xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A]">
+                                <FileText size={18} />
+                              </div>
+                              <p className="text-white text-[10px] font-black uppercase truncate max-w-[200px] mx-auto">{certFile.name}</p>
+                              <p className="text-white/30 text-[8px] font-bold">
+                                {(certFile.size / 1024).toFixed(1)} KB
+                              </p>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setCertFile(null); if (certFileInputRef.current) certFileInputRef.current.value = ''; }}
+                                className="text-[8px] font-black text-red-400 hover:text-red-300 uppercase tracking-widest"
+                              >
+                                Quitar archivo
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <Upload size={20} className="text-white/20 mx-auto" />
+                              <p className="text-white/30 text-[9px] font-black uppercase tracking-widest">
+                                Click para seleccionar archivo
+                              </p>
+                              <p className="text-white/15 text-[8px]">
+                                PDF, imagen, Word, Excel — Max 10MB
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* URL alternativa (opcional) */}
+                      <div>
+                        <label className="text-[8px] sm:text-[9px] font-black text-white/30 uppercase tracking-widest block mb-1">
+                          O pegar enlace manual (opcional)
+                        </label>
                         <input 
                           type="url" 
                           value={newCertUrl}
                           onChange={(e) => setNewCertUrl(e.target.value)}
                           placeholder="https://drive.google.com/file/..."
-                          className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all"
+                          disabled={!!certFile}
+                          className="w-full bg-[#0d0e12] border border-white/10 p-3 rounded-xl text-white text-xs font-medium outline-none focus:border-[#DEFF9A] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                       </div>
+
                       <button 
                         onClick={handleAddCertification}
-                        disabled={!newCertName.trim()}
-                        className="w-full py-3 bg-[#DEFF9A] text-[#061a1a] font-black text-[10px] tracking-widest uppercase rounded-xl hover:scale-[1.02] transition-all disabled:opacity-30 disabled:pointer-events-none"
+                        disabled={!newCertName.trim() || isUploadingCert}
+                        className="w-full py-3 bg-[#DEFF9A] text-[#061a1a] font-black text-[10px] tracking-widest uppercase rounded-xl hover:scale-[1.02] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
                       >
-                        Agregar Certificación
+                        {isUploadingCert ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Subiendo a Google Drive...
+                          </>
+                        ) : (
+                          'Agregar Certificación'
+                        )}
                       </button>
                    </div>
                 </motion.div>

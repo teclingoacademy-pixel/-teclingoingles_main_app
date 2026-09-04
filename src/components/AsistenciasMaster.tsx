@@ -18,11 +18,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
 import { PieChart, Pie, Cell } from 'recharts';
 import { SafeResponsiveContainer } from './SafeResponsiveContainer';
+import { useAppContext } from '../context/AppContext';
+import { obtenerAsistenciaGrupo } from '../services/identityService';
 
 interface AttendanceGroup {
   id: string;
   name: string;
   percentage: number;
+  presentes: number;
+  total: number;
 }
 
 interface LiveCheckIn {
@@ -33,21 +37,6 @@ interface LiveCheckIn {
   group: string;
 }
 
-const groupsData: AttendanceGroup[] = [
-  { id: '1', name: 'A1-101', percentage: 95 },
-  { id: '2', name: 'A1-102', percentage: 82 },
-  { id: '3', name: 'B2-205', percentage: 70 },
-  { id: '4', name: 'C1-304', percentage: 98 },
-  { id: '5', name: 'A2-105', percentage: 60 },
-  { id: '6', name: 'B1-108', percentage: 88 },
-];
-
-const mockLiveCheckIns: LiveCheckIn[] = [
-  { id: '1', name: 'Juan Pérez', group: 'A1-102', time: '14:22:05', photo: 'https://i.pravatar.cc/150?u=1' },
-  { id: '2', name: 'Maria Garcia', group: 'B2-205', time: '14:22:15', photo: 'https://i.pravatar.cc/150?u=2' },
-  { id: '3', name: 'Luis M.', group: 'A1-101', time: '14:23:01', photo: 'https://i.pravatar.cc/150?u=3' },
-];
-
 export interface AttendanceIntervention {
   id: string;
   userName: string;
@@ -56,30 +45,100 @@ export interface AttendanceIntervention {
   lastAbsence: string;
 }
 
-const mockInterventions: AttendanceIntervention[] = [
-  { id: '1', userName: 'Sofía Méndez', userId: 'USR-221-C99', absences: 3, lastAbsence: 'Ayer' },
-  { id: '2', userName: 'Carlos K.', userId: 'USR-772-K', absences: 4, lastAbsence: 'Hoy' },
+const mockLiveCheckIns: LiveCheckIn[] = [
+  { id: '1', name: 'Juan Perez', group: 'A1-102', time: '14:22:05', photo: 'https://i.pravatar.cc/150?u=1' },
+  { id: '2', name: 'Maria Garcia', group: 'B2-205', time: '14:22:15', photo: 'https://i.pravatar.cc/150?u=2' },
+  { id: '3', name: 'Luis M.', group: 'A1-101', time: '14:23:01', photo: 'https://i.pravatar.cc/150?u=3' },
 ];
 
 export function AsistenciasMaster() {
+  const { userEmail, groups } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [showInterventions, setShowInterventions] = useState(true);
   const [liveLog, setLiveLog] = useState<LiveCheckIn[]>(mockLiveCheckIns);
+  const [groupsData, setGroupsData] = useState<AttendanceGroup[]>([]);
+  const [interventions, setInterventions] = useState<AttendanceIntervention[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [today] = useState(new Date().toISOString().slice(0, 10));
+
+  // Load real attendance data from API
+  useEffect(() => {
+    if (!userEmail) return;
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      const groupList = groups.filter(g => g.studentIds && g.studentIds.length > 0);
+      const results: AttendanceGroup[] = [];
+      const interventionList: AttendanceIntervention[] = [];
+
+      for (const group of groupList) {
+        try {
+          const records = await obtenerAsistenciaGrupo(userEmail, group.id, today);
+          if (cancelled) return;
+          const total = group.studentIds?.length || 1;
+          const presentes = records.filter((r: any) => r.estado === 'PRESENTE' || r.estado === 'RETRASO').length;
+          const faltas = records.filter((r: any) => r.estado === 'AUSENTE').length;
+          const pct = total > 0 ? Math.round((presentes / total) * 100) : 0;
+          results.push({
+            id: group.id,
+            name: group.name || group.id,
+            percentage: pct,
+            presentes,
+            total,
+          });
+          // Track students with 3+ absences for intervention alerts
+          const absentStudents = new Map<string, number>();
+          records.forEach((r: any) => {
+            if (r.estado === 'AUSENTE') {
+              absentStudents.set(r.user_id, (absentStudents.get(r.user_id) || 0) + 1);
+            }
+          });
+          absentStudents.forEach((count, userId) => {
+            if (count >= 3) {
+              interventionList.push({
+                id: `${group.id}-${userId}`,
+                userName: records.find((r: any) => r.user_id === userId)?.nombre || userId,
+                userId,
+                absences: count,
+                lastAbsence: today,
+              });
+            }
+          });
+        } catch (err) {
+          console.warn('[AsistenciasMaster] load error for group', group.id, err);
+        }
+      }
+
+      if (!cancelled) {
+        setGroupsData(results);
+        setInterventions(interventionList);
+        setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [userEmail, groups, today]);
+
+  // Compute global KPIs
+  const totalStudents = groupsData.reduce((sum, g) => sum + g.total, 0);
+  const totalPresent = groupsData.reduce((sum, g) => sum + g.presentes, 0);
+  const globalPct = totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : 0;
+  const criticalGroup = groupsData.reduce((min, g) => g.percentage < min.percentage ? g : min, { percentage: 100, name: '-', id: '-' });
 
   // Simulate live feed
   useEffect(() => {
     const interval = setInterval(() => {
       const newEntry = {
         id: Math.random().toString(),
-        name: ['Héctor R.', 'Elena V.', 'Carlos S.', 'Ana P.'][Math.floor(Math.random() * 4)],
-        group: ['A1-101', 'B2-205', 'C1-304'][Math.floor(Math.random() * 3)],
+        name: ['Hector R.', 'Elena V.', 'Carlos S.', 'Ana P.'][Math.floor(Math.random() * 4)],
+        group: groupsData.length > 0 ? groupsData[Math.floor(Math.random() * groupsData.length)].name : 'A1-101',
         time: new Date().toLocaleTimeString(),
         photo: `https://i.pravatar.cc/150?u=${Math.random()}`
       };
       setLiveLog(prev => [newEntry, ...prev.slice(0, 4)]);
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [groupsData]);
 
   return (
     <motion.div 
@@ -108,8 +167,8 @@ export function AsistenciasMaster() {
              <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">Puntualidad Global</p>
                 <div className="flex items-baseline gap-2">
-                   <h3 className="text-4xl font-black text-white bevel-text">94%</h3>
-                   <span className="text-[#DEFF9A] text-[10px] font-bold">+2.1%</span>
+                   <h3 className="text-4xl font-black text-white bevel-text">{globalPct}%</h3>
+                   {loading && <span className="text-white/30 text-[10px] font-bold animate-pulse">Cargando...</span>}
                 </div>
              </div>
              <div className="w-12 h-12 rounded-2xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A]">
@@ -117,16 +176,16 @@ export function AsistenciasMaster() {
              </div>
           </div>
           <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-             <div className="h-full bg-[#DEFF9A] shadow-[0_0_10px_#DEFF9A]" style={{ width: '94%' }} />
+             <div className="h-full bg-[#DEFF9A] shadow-[0_0_10px_#DEFF9A]" style={{ width: `${globalPct}%` }} />
           </div>
         </GlassCard>
 
         <GlassCard accent="orange">
           <div className="flex justify-between items-start">
              <div>
-                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">Ausentismo Crítico</p>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">Ausentismo Critico</p>
                 <div className="flex items-baseline gap-2">
-                   <h3 className="text-4xl font-black text-[#F59E0B] bevel-text">12 ALUMNOS</h3>
+                   <h3 className="text-4xl font-black text-[#F59E0B] bevel-text">{interventions.length} ALUMNOS</h3>
                    <button 
                      onClick={() => setShowInterventions(!showInterventions)}
                      className="px-2 py-1 rounded bg-[#F59E0B]/10 text-[#F59E0B] text-[8px] font-black uppercase hover:bg-[#F59E0B]/20 transition-all ml-2"
@@ -141,15 +200,15 @@ export function AsistenciasMaster() {
           </div>
           <p className="mt-4 text-[9px] font-bold uppercase text-white/40 tracking-widest flex items-center gap-2">
              <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
-             Riesgo de deserción alto (3+ faltas)
+             Riesgo de desercion alto (3+ faltas)
           </p>
         </GlassCard>
 
         <GlassCard accent="cyan">
           <div className="flex justify-between items-start">
              <div>
-                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">Grupo Crítico</p>
-                <h3 className="text-4xl font-black text-white bevel-text">A2-105</h3>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">Grupo Critico</p>
+                <h3 className="text-4xl font-black text-white bevel-text">{criticalGroup.name}</h3>
              </div>
              <div className="w-12 h-12 rounded-2xl bg-[#22D3EE]/10 border border-[#22D3EE]/20 flex items-center justify-center text-[#22D3EE]">
                 <MapPin size={24} />
@@ -157,7 +216,7 @@ export function AsistenciasMaster() {
           </div>
           <div className="mt-4 flex justify-between items-center text-[9px] font-bold uppercase tracking-widest">
              <span className="text-white/40">Asistencia Hoy:</span>
-             <span className="text-red-500">60%</span>
+             <span className={criticalGroup.percentage < 70 ? 'text-red-500' : 'text-white'}>{criticalGroup.percentage}%</span>
           </div>
         </GlassCard>
       </div>
@@ -171,13 +230,19 @@ export function AsistenciasMaster() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-             <GlassCard title="Alertas de Intervención Inmediata" icon={AlertCircle} accent="orange" className="mb-8">
+             <GlassCard title="Alertas de Intervencion Inmediata" icon={AlertCircle} accent="orange" className="mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                   {mockInterventions.map((alert) => (
+                   {interventions.length === 0 ? (
+                     <div className="col-span-full p-8 text-center">
+                       <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest">
+                         {loading ? 'Cargando alertas...' : 'Sin alertas de intervencion'}
+                       </p>
+                     </div>
+                   ) : interventions.map((alert) => (
                      <div key={alert.id} className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 flex flex-col justify-between group hover:bg-red-500/10 transition-all">
                         <div className="space-y-2">
                            <div className="flex justify-between">
-                              <span className="text-red-500 text-[8px] font-black uppercase tracking-widest">Alerta de Deserción</span>
+                              <span className="text-red-500 text-[8px] font-black uppercase tracking-widest">Alerta de Desercion</span>
                               <span className="text-white/20 text-[8px] font-mono">{alert.userId}</span>
                            </div>
                            <h4 className="text-white text-sm font-black uppercase tracking-tight">{alert.userName}</h4>
@@ -198,19 +263,28 @@ export function AsistenciasMaster() {
       <div className="grid grid-cols-12 gap-8">
         {/* Panoramic Grid */}
         <div className="col-span-12 lg:col-span-8">
-          <GlassCard title="Vista Panorámica por Grupos" icon={Users} accent="green">
-             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+          <GlassCard title="Vista Panoramica por Grupos" icon={Users} accent="green">
+             {loading ? (
+               <div className="p-12 text-center">
+                 <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest animate-pulse">Cargando datos de asistencia...</p>
+               </div>
+             ) : groupsData.length === 0 ? (
+               <div className="p-12 text-center">
+                 <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest">No hay grupos con datos de hoy</p>
+               </div>
+             ) : (
+               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                 {groupsData.map((group) => (
                   <motion.div 
                     key={group.id}
                     whileHover={{ scale: 1.02 }}
-                    className="p-5 rounded-[2rem] bg-black/20 border border-white/5 hover:border-[#DEFF9A]/30 transition-all cursor-pointer group"
+                    className="p-5 rounded-[2rem] bg-black/20 border border-white/5 hover:border-[#DEFF9A]/30 transition-all cursor-pointer group relative"
                   >
                      <div className="flex justify-between items-center mb-6">
                         <span className="text-[10px] font-black text-white uppercase tracking-widest group-hover:text-[#DEFF9A] transition-colors">{group.name}</span>
                         <ArrowUpRight size={14} className="text-white/20 group-hover:text-white" />
                      </div>
-                     <div className="h-32 w-full">
+                     <div className="h-32 w-full relative">
                          <SafeResponsiveContainer width="100%" height="100%">
                           <PieChart>
                              <Pie
@@ -239,6 +313,7 @@ export function AsistenciasMaster() {
                   </motion.div>
                 ))}
              </div>
+             )}
           </GlassCard>
           
           {/* Individual Search & Heatmap */}

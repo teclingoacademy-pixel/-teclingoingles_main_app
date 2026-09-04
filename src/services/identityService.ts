@@ -10,7 +10,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycbyGF4Dx2mQ8vKUQiM_PZw-A8iHvJY84nTY_qdRlhL_VBIp0AwMoHsFFXd2IqI7l4uCD/exec';
+  'https://script.google.com/macros/s/AKfycbyrQIoHHE-SppuPesuKeDh4uS3Kwk9Z5L1VI1_dZza_X1tT0g0N4D3v7DIduH92WGsm/exec';
 
 const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
@@ -490,6 +490,50 @@ export async function uploadAvatar(
     return { ok: false, code: res?.code, error: res?.error };
   } catch (err) {
     console.warn('[Identity] uploadAvatar error:', err);
+    return { ok: false, error: 'drive_unreachable' };
+  }
+}
+
+export interface UploadCertificationResult {
+  ok: boolean;
+  fileUrl?: string;
+  fileId?: string;
+  error?: string;
+}
+
+/**
+ * Sube un documento de certificación (PDF, imagen, etc.) al Google Drive
+ * en la carpeta designada para certificaciones.
+ *
+ * @param email      Email del usuario propietario
+ * @param fileBase64 Contenido del archivo en base64 (data URL o raw base64)
+ * @param fileName   Nombre original del archivo
+ * @param mimeType   Tipo MIME del archivo
+ * @param role       Rol del usuario ('DOCENTE' | 'ALUMNO' | 'DIRECTOR')
+ *                   para determinar la carpeta de destino en Drive
+ */
+export async function uploadCertificationDocument(
+  email: string,
+  fileBase64: string,
+  fileName: string,
+  mimeType: string,
+  role: string = 'DOCENTE'
+): Promise<UploadCertificationResult> {
+  try {
+    const res = await postAlLake({
+      action: 'uploadCertification',
+      email: email.toLowerCase().trim(),
+      fileBase64,
+      fileName,
+      mimeType,
+      role: role.toUpperCase(),
+    }, 45000); // 45s timeout para archivos grandes
+    if (res?.ok) {
+      return { ok: true, fileUrl: (res as any).fileUrl, fileId: (res as any).fileId };
+    }
+    return { ok: false, error: res?.error || 'upload_failed' };
+  } catch (err) {
+    console.warn('[Identity] uploadCertificationDocument error:', err);
     return { ok: false, error: 'drive_unreachable' };
   }
 }
