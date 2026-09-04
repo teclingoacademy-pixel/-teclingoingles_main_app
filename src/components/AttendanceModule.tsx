@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { 
   Users, 
   CheckCircle2, 
@@ -22,33 +22,54 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
 import { QRScannerModule } from './QRScannerModule';
 import { useAppContext } from '../context/AppContext';
-import { registrarAsistencia, type RegistroAsistencia } from '../services/identityService';
+import { registrarAsistencia, obtenerMiembrosDeGrupo, type RegistroAsistencia } from '../services/identityService';
 
 interface Student {
   id: string;
   name: string;
+  email: string;
   photo: string;
   status: 'PRESENT' | 'ABSENT' | 'LATE' | null;
 }
-
-const mockStudents: Student[] = [
-  { id: '1', name: 'JUAN PEREZ', photo: 'https://i.pravatar.cc/150?u=1', status: null },
-  { id: '2', name: 'MARIA GARCIA', photo: 'https://i.pravatar.cc/150?u=2', status: null },
-  { id: '3', name: 'LUIS MARTINEZ', photo: 'https://i.pravatar.cc/150?u=3', status: null },
-  { id: '4', name: 'ANA SANCHEZ', photo: 'https://i.pravatar.cc/150?u=4', status: null },
-  { id: '5', name: 'PEDRO RODRIGUEZ', photo: 'https://i.pravatar.cc/150?u=5', status: null },
-  { id: '6', name: 'SOFIA LOPEZ', photo: 'https://i.pravatar.cc/150?u=6', status: null },
-];
 
 type AttendanceStatus = Student['status'];
 
 export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?: string; onBack: () => void }) {
   const { userEmail } = useAppContext();
-  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const [showNotificationModal, setShowNotificationModal] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Load real students from API
+  useEffect(() => {
+    if (!userEmail || !groupName) return;
+    let cancelled = false;
+    const loadStudents = async () => {
+      setLoadingStudents(true);
+      try {
+        const miembros = await obtenerMiembrosDeGrupo(userEmail, groupName);
+        if (cancelled) return;
+        const mapped: Student[] = miembros.map(m => ({
+          id: m.user_id,
+          name: (m.nombre || m.email || '').toUpperCase(),
+          email: m.email || '',
+          photo: `https://i.pravatar.cc/150?u=${m.user_id}`,
+          status: null,
+        }));
+        setStudents(mapped);
+      } catch (err) {
+        console.warn('[AttendanceModule] Error loading students:', err);
+        setStudents([]);
+      } finally {
+        if (!cancelled) setLoadingStudents(false);
+      }
+    };
+    loadStudents();
+    return () => { cancelled = true; };
+  }, [userEmail, groupName]);
 
   const updateStatus = useCallback((id: string, status: AttendanceStatus) => {
     setStudents(prev => prev.map(s => s.id === id ? { ...s, status } : s));
@@ -68,7 +89,7 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
         .filter(s => s.status !== null)
         .map(s => ({
           user_id: s.id,
-          email: `${s.id}@teclingo.edu`,
+          email: s.email,
           nombre: s.name,
           estado: s.status === 'PRESENT' ? 'PRESENTE' :
                   s.status === 'ABSENT' ? 'AUSENTE' :
@@ -121,11 +142,12 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
 
       // Persist immediately via API
       if (userEmail) {
+        const found = students.find(s => s.id === id);
         try {
           await registrarAsistencia(userEmail, groupName, [{
             user_id: id,
-            email: `${id}@teclingo.edu`,
-            nombre: students.find(s => s.id === id)?.name || id,
+            email: found?.email || `${id}@teclingo.edu`,
+            nombre: found?.name || id,
             estado: 'PRESENTE',
           }]);
         } catch (err) {
@@ -167,6 +189,17 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
         </div>
       </header>
 
+      {loadingStudents ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-12 h-12 border-4 border-[#DEFF9A]/30 border-t-[#DEFF9A] rounded-full animate-spin mb-4" />
+          <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Cargando alumnos del grupo...</p>
+        </div>
+      ) : students.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Users size={48} className="text-white/20 mb-4" />
+          <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">No hay alumnos en este grupo</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4">
          {students.map((student) => {
            const borderClass = student.status === 'PRESENT' ? 'border-[#4ADE80]/40 shadow-[0_0_20px_rgba(74,222,128,0.1)]' :
@@ -239,6 +272,7 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
            );
          })}
       </div>
+      )}
 
       <div className="fixed bottom-12 right-12 z-40 flex gap-4">
          <button 
