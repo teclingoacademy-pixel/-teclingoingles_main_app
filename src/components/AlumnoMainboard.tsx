@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Users,
@@ -30,7 +30,9 @@ import {
   Monitor,
   Languages,
   BookOpen,
-  Shield
+  Shield,
+  Camera,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar, SidebarItem } from './Sidebar';
@@ -56,7 +58,7 @@ import { ExtracurricularHub } from './ExtracurricularHub';
 import { ExtracurricularModal } from './ExtracurricularModal';
 import { useAppContext } from '../context/AppContext';
 import { useMemo } from 'react';
-import { LibroVirtualAlumnoCompleto } from './LibroVirtualAlumnoCompleto';
+import { LibroVirtual } from './LibroVirtual';
 import { SafeZoneModule } from './SafeZoneModule';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
@@ -154,6 +156,7 @@ interface AlumnoMainboardProps {
       badge: isExtracurricularUnlocked ? t('new') : 'PRÓXIMAMENTE',
       category: 'Monitoreo & Innovación'
     },
+    { id: 'evidencia', label: 'Evidencia SMART', icon: Camera, category: 'Monitoreo & Innovación' },
     { id: 'logros', label: t('achievements'), icon: Trophy, category: 'Monitoreo & Innovación' },
   ], [t, isExtracurricularUnlocked]);
 
@@ -192,6 +195,7 @@ interface AlumnoMainboardProps {
 
       <MessageNotificationBell
         onNavigateToChat={handleBellNavigateToChat}
+        onNavigateToCalendar={() => setCurrentView('calendario')}
         accentColor="#22D3EE"
       />
 
@@ -428,7 +432,7 @@ interface AlumnoMainboardProps {
               ) : currentView === 'progress-map' ? (
                 <ProgressMap />
               ) : currentView === 'libro-virtual' ? (
-                <LibroVirtualAlumnoCompleto />
+                <LibroVirtual role="alumno" lessonId="N1-C01" />
               ) : currentView === 'safe-zone' ? (
                 <SafeZoneModule />
               ) : currentView === 'pdp' ? (
@@ -453,6 +457,8 @@ interface AlumnoMainboardProps {
                 <AchievementWall />
               ) : currentView === 'extracurricular' ? (
                 <ExtracurricularHub />
+              ) : currentView === 'evidencia' ? (
+                <EvidenceUploadSection userEmail={userEmail || ''} />
               ) : currentView === 'settings' ? (
                 <UserSettings 
                   role="ALUMNO" 
@@ -511,6 +517,225 @@ interface AlumnoMainboardProps {
         role="ALUMNO"
         profileData={studentProfileData}
       />
+    </div>
+  );
+}
+
+interface EvidenceUploadSectionProps {
+  userEmail: string;
+}
+
+function EvidenceUploadSection({ userEmail }: EvidenceUploadSectionProps) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Solo se permiten archivos de imagen (JPG, PNG)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('El archivo excede el tamaño máximo de 10MB');
+      return;
+    }
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setPreviewUrl(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpload = async () => {
+    if (!previewUrl || !userEmail) return;
+
+    setIsUploading(true);
+    setUploadStatus('idle');
+
+    try {
+      // Extract base64 from data URL
+      const base64Data = previewUrl.split(',')[1];
+      const fileName = `evidencia_${new Date().toISOString().slice(0, 10)}_${Date.now()}.jpg`;
+      
+      const { uploadEvidence } = await import('../services/identityService');
+      const result = await uploadEvidence(
+        userEmail,
+        base64Data,
+        fileName,
+        'image/jpeg',
+        'retraso',
+        '',
+        new Date().toISOString().slice(0, 10)
+      );
+
+      if (result.ok) {
+        setUploadStatus('success');
+        setPreviewUrl(null);
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } else {
+        setUploadStatus('error');
+        console.error('Upload failed:', result.error);
+      }
+    } catch (error) {
+      setUploadStatus('error');
+      console.error('Upload error:', error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <header>
+        <h2 className="text-[#22D3EE] text-[10px] font-black uppercase tracking-[0.4em] mb-3">Evidencia SMART</h2>
+        <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight">Capturar Evidencia</h1>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Upload Area */}
+        <div className="space-y-6">
+          <GlassCard title="Subir Evidencia" icon={Camera} accent="cyan">
+            <div className="space-y-6">
+              <p className="text-white/60 text-[11px] font-medium leading-relaxed italic">
+                "Sube la evidencia de hoy para validar tu sesión ante Dirección. El sistema TECLINGO PRO 1.1 analizará el contexto pedagógico."
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <div className="px-3 py-1.5 rounded-lg bg-[#22D3EE]/10 border border-[#22D3EE]/20 text-[#22D3EE] text-[8px] font-black uppercase tracking-widest">JPG, PNG</div>
+                <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/40 text-[8px] font-black uppercase tracking-widest">Max 10MB</div>
+              </div>
+
+              {/* File Input */}
+              <div className="relative">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="evidence-upload"
+                />
+                <label
+                  htmlFor="evidence-upload"
+                  className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-white/10 rounded-3xl cursor-pointer hover:border-[#22D3EE]/40 hover:bg-[#22D3EE]/5 transition-all"
+                >
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="max-h-40 max-w-full object-contain rounded-xl" />
+                  ) : (
+                    <>
+                      <Upload size={40} className="text-white/20 mb-4" />
+                      <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">Toca para seleccionar imagen</p>
+                    </>
+                  )}
+                </label>
+              </div>
+
+              {/* Upload Button */}
+              <button
+                onClick={handleUpload}
+                disabled={!previewUrl || isUploading}
+                className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                  !previewUrl || isUploading
+                    ? 'bg-white/5 border border-white/10 text-white/20 cursor-not-allowed'
+                    : 'bg-[#22D3EE]/20 border border-[#22D3EE]/30 text-[#22D3EE] hover:bg-[#22D3EE] hover:text-[#061a1a]'
+                }`}
+              >
+                {isUploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={14} />
+                    Subir Evidencia
+                  </>
+                )}
+              </button>
+
+              {/* Status Messages */}
+              {uploadStatus === 'success' && (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+                  <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+                  <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                    Evidencia subida exitosamente
+                  </p>
+                </div>
+              )}
+
+              {uploadStatus === 'error' && (
+                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center text-red-400 shrink-0">!</div>
+                  <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest">
+                    Error al subir evidencia. Intenta de nuevo.
+                  </p>
+                </div>
+              )}
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Info Panel */}
+        <div className="space-y-6">
+          <GlassCard title="Instrucciones" icon={Clock} accent="green">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A] text-[10px] font-black shrink-0">1</div>
+                <p className="text-white/60 text-[10px] font-medium leading-relaxed">
+                  Selecciona una foto clara de tu evidencia (asistencia, retraso, etc.)
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A] text-[10px] font-black shrink-0">2</div>
+                <p className="text-white/60 text-[10px] font-medium leading-relaxed">
+                  Asegúrate de que la imagen sea legible y muestre la fecha/hora
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-[#DEFF9A]/20 flex items-center justify-center text-[#DEFF9A] text-[10px] font-black shrink-0">3</div>
+                <p className="text-white/60 text-[10px] font-medium leading-relaxed">
+                  Presiona "Subir Evidencia" y espera la confirmación
+                </p>
+              </div>
+            </div>
+          </GlassCard>
+
+          <GlassCard title="Formatos Aceptados" icon={Zap} accent="orange">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                <div className="w-8 h-8 rounded-lg bg-[#22D3EE]/10 flex items-center justify-center text-[#22D3EE]">
+                  <Camera size={16} />
+                </div>
+                <div>
+                  <p className="text-white text-[10px] font-black uppercase tracking-widest">JPG / JPEG</p>
+                  <p className="text-white/40 text-[8px] font-medium">Formato estándar de imagen</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                <div className="w-8 h-8 rounded-lg bg-[#DEFF9A]/10 flex items-center justify-center text-[#DEFF9A]">
+                  <Camera size={16} />
+                </div>
+                <div>
+                  <p className="text-white text-[10px] font-black uppercase tracking-widest">PNG</p>
+                  <p className="text-white/40 text-[8px] font-medium">Formato sin compresión</p>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      </div>
     </div>
   );
 }

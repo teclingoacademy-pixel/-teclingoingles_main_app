@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   AlertTriangle,
   FileText,
-  Send
+  Send,
+  ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
@@ -29,7 +30,7 @@ interface Student {
   name: string;
   email: string;
   photo: string;
-  status: 'PRESENT' | 'ABSENT' | 'LATE' | null;
+  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | null;
 }
 
 type AttendanceStatus = Student['status'];
@@ -79,6 +80,7 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
     present: students.filter(s => s.status === 'PRESENT').length,
     absent: students.filter(s => s.status === 'ABSENT').length,
     late: students.filter(s => s.status === 'LATE').length,
+    excused: students.filter(s => s.status === 'EXCUSED').length,
   };
 
   const handleSaveAttendance = async () => {
@@ -93,7 +95,8 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
           nombre: s.name,
           estado: s.status === 'PRESENT' ? 'PRESENTE' :
                   s.status === 'ABSENT' ? 'AUSENTE' :
-                  'RETRASO' as any,
+                  s.status === 'LATE' ? 'RETRASO' :
+                  'JUSTIFICADO' as any,
         }));
 
       if (registros.length === 0) {
@@ -186,6 +189,9 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
            <div className="px-6 py-3 rounded-2xl bg-[#FBBF24]/10 border border-[#FBBF24]/20 text-[#FBBF24] text-[10px] font-black uppercase tracking-widest text-center min-w-[100px]">
               Retrasos: {stats.late}
            </div>
+           <div className="px-6 py-3 rounded-2xl bg-[#60A5FA]/10 border border-[#60A5FA]/20 text-[#60A5FA] text-[10px] font-black uppercase tracking-widest text-center min-w-[100px]">
+              Justificados: {stats.excused}
+           </div>
         </div>
       </header>
 
@@ -205,11 +211,13 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
            const borderClass = student.status === 'PRESENT' ? 'border-[#4ADE80]/40 shadow-[0_0_20px_rgba(74,222,128,0.1)]' :
                                student.status === 'ABSENT' ? 'border-[#F87171]/40 shadow-[0_0_20px_rgba(248,113,113,0.1)]' :
                                student.status === 'LATE' ? 'border-[#FBBF24]/40 shadow-[0_0_20px_rgba(251,191,36,0.1)]' :
+                               student.status === 'EXCUSED' ? 'border-[#60A5FA]/40 shadow-[0_0_20px_rgba(96,165,250,0.1)]' :
                                'border-white/5';
            
            const bgClass = student.status === 'PRESENT' ? 'bg-[#4ADE80]/05' :
                            student.status === 'ABSENT' ? 'bg-[#F87171]/05' :
                            student.status === 'LATE' ? 'bg-[#FBBF24]/05' :
+                           student.status === 'EXCUSED' ? 'bg-[#60A5FA]/05' :
                            'bg-white/[0.02]';
 
            return (
@@ -256,6 +264,14 @@ export function AttendanceModule({ groupName = "A1-102", onBack }: { groupName?:
                     }`}
                    >
                       <Clock size={12} /> Retraso
+                   </button>
+                   <button 
+                    onClick={() => updateStatus(student.id, 'EXCUSED')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${
+                      student.status === 'EXCUSED' ? 'bg-[#60A5FA] text-[#061a1a] border-[#60A5FA] shadow-[0_0_20px_#60A5FA60]' : 'bg-white/5 text-white/30 border-white/10 hover:text-white'
+                    }`}
+                   >
+                      <ClipboardCheck size={12} /> Justificado
                    </button>
                    
                    <div className="w-px h-8 bg-white/10 mx-2" />

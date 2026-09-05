@@ -299,6 +299,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
 
       <MessageNotificationBell
         onNavigateToChat={handleBellNavigateToChat}
+        onNavigateToCalendar={() => setCurrentView('calendario')}
         accentColor="#4ADE80"
       />
 

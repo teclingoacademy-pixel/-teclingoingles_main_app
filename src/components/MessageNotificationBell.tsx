@@ -3,24 +3,42 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { Bell, MessageCircle, X, Users, Crown, MessageSquare, ChevronDown, ChevronUp, Calendar, Star, Zap, Award } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Bell, MessageCircle, X, Users, Crown, MessageSquare, ChevronUp, Calendar, Star, Zap, Award, Check, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
 import { fetchCalendarEvents, type CalendarEvent } from '../services/calendarService';
 
 interface MessageNotificationBellProps {
   onNavigateToChat: (chatId: string) => void;
+  onNavigateToCalendar?: () => void;
   accentColor?: string;
 }
 
-export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF9A' }: MessageNotificationBellProps) {
+const ACK_STORAGE_KEY = 'teclingo_acknowledged_events';
+
+function getAcknowledgedEvents(): Set<string> {
+  try {
+    const stored = localStorage.getItem(ACK_STORAGE_KEY);
+    if (stored) {
+      return new Set(JSON.parse(stored));
+    }
+  } catch { /* noop */ }
+  return new Set();
+}
+
+function saveAcknowledgedEvents(ids: Set<string>): void {
+  localStorage.setItem(ACK_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
+export function MessageNotificationBell({ onNavigateToChat, onNavigateToCalendar, accentColor = '#DEFF9A' }: MessageNotificationBellProps) {
   const { chats, userEmail, markChatAsRead, currentRole } = useAppContext();
   const [expanded, setExpanded] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [acknowledgedEvents, setAcknowledgedEvents] = useState<Set<string>>(() => getAcknowledgedEvents());
 
   const chatsWithUnread = useMemo(() => {
     return chats
@@ -30,13 +48,19 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
 
   const totalUnread = chatsWithUnread.reduce((sum, c) => sum + c.unreadCount, 0);
 
-  const today = new Date();
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }, []);
+
+  const todayRef = useRef(new Date());
 
   const upcomingCalendarEvents = useMemo(() => {
+    const today = todayRef.current;
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     return calendarEvents
       .filter(e => {
         const eventDate = new Date(e.year, e.month - 1, e.day);
-        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         if (eventDate < todayStart) return false;
         if (e.visibility.includes('GLOBAL')) return true;
         return e.visibility.includes(currentRole as any);
@@ -46,15 +70,20 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
         const db = new Date(b.year, b.month - 1, b.day);
         return da.getTime() - db.getTime();
       });
-  }, [calendarEvents, currentRole]);
+  }, [calendarEvents, currentRole, todayKey]);
 
-  const calendarAlertCount = upcomingCalendarEvents.length;
+  const unacknowledgedEvents = useMemo(() => {
+    return upcomingCalendarEvents.filter(e => !acknowledgedEvents.has(e.id));
+  }, [upcomingCalendarEvents, acknowledgedEvents]);
+
+  const calendarAlertCount = unacknowledgedEvents.length;
 
   useEffect(() => {
     let cancelled = false;
+    const now = new Date();
     const load = async () => {
       try {
-        const events = await fetchCalendarEvents(today.getFullYear(), today.getMonth() + 1);
+        const events = await fetchCalendarEvents(now.getFullYear(), now.getMonth() + 1);
         if (!cancelled) setCalendarEvents(events);
       } catch { /* silent */ }
     };
@@ -74,11 +103,27 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [expanded]);
 
-  const handleChatClick = (chatId: string) => {
+  const handleChatClick = useCallback((chatId: string) => {
     markChatAsRead(chatId);
     setExpanded(false);
     onNavigateToChat(chatId);
-  };
+  }, [markChatAsRead, onNavigateToChat]);
+
+  const handleAcknowledgeEvent = useCallback((eventId: string) => {
+    setAcknowledgedEvents(prev => {
+      const next = new Set(prev);
+      next.add(eventId);
+      saveAcknowledgedEvents(next);
+      return next;
+    });
+  }, []);
+
+  const handleViewEvent = useCallback((event: CalendarEvent) => {
+    if (onNavigateToCalendar) {
+      setExpanded(false);
+      onNavigateToCalendar();
+    }
+  }, [onNavigateToCalendar]);
 
   if (!userEmail) return null;
 
@@ -150,7 +195,7 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.96 }}
               transition={{ duration: 0.15 }}
-              className="w-[min(360px,calc(100vw-2rem))] max-h-[70vh] bg-[#0a0f1a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              className="w-[min(380px,calc(100vw-2rem))] max-h-[70vh] bg-[#0a0f1a]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
                 <div className="flex items-center gap-2">
@@ -182,54 +227,85 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
                         Eventos del Calendario
                       </span>
                       <span className="text-[8px] font-black text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full ml-auto">
-                        {upcomingCalendarEvents.length}
+                        {unacknowledgedEvents.length} / {upcomingCalendarEvents.length}
                       </span>
                     </div>
                     <div className="divide-y divide-white/5">
-                      {upcomingCalendarEvents.slice(0, 5).map(event => (
-                        <div
-                          key={event.id}
-                          className="w-full px-4 py-3 hover:bg-white/[0.04] transition-colors flex items-start gap-3 group"
-                        >
-                          <div className="relative shrink-0">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
-                              event.type === 'SCHOOL' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
-                              event.type === 'HOLIDAY' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                              'bg-[#DEFF9A]/10 border-[#DEFF9A]/20 text-[#DEFF9A]'
-                            }`}>
-                              {event.type === 'SCHOOL' ? <Award size={16} /> :
-                               event.type === 'HOLIDAY' ? <Star size={16} /> :
-                               <Zap size={16} />}
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-0.5">
-                              <p className="text-white text-[11px] font-black uppercase tracking-tight truncate">
-                                {event.title}
-                              </p>
-                              <span className="text-[8px] text-white/30 uppercase tracking-widest shrink-0">
-                                {event.time || 'Todo el dia'}
-                              </span>
-                            </div>
-                            <p className="text-white/50 text-[10px] truncate leading-snug">
-                              {event.description || 'Sin descripcion'}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
-                                event.type === 'SCHOOL' ? 'bg-cyan-500/20 text-cyan-400' :
-                                event.type === 'HOLIDAY' ? 'bg-orange-500/20 text-orange-400' :
-                                'bg-[#DEFF9A]/20 text-[#DEFF9A]'
+                      {upcomingCalendarEvents.slice(0, 5).map(event => {
+                        const isAcked = acknowledgedEvents.has(event.id);
+                        return (
+                          <div
+                            key={event.id}
+                            className={`w-full px-4 py-3 transition-colors flex items-start gap-3 group ${
+                              isAcked ? 'bg-white/[0.01] opacity-60' : 'hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <div className="relative shrink-0">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                                event.type === 'SCHOOL' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' :
+                                event.type === 'HOLIDAY' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                                'bg-[#DEFF9A]/10 border-[#DEFF9A]/20 text-[#DEFF9A]'
                               }`}>
-                                {event.type === 'SCHOOL' ? 'Escolar' :
-                                 event.type === 'HOLIDAY' ? 'Asueto' : 'TECLINGO'}
-                              </span>
-                              <span className="text-white/20 text-[8px]">
-                                {event.day}/{event.month}/{event.year}
-                              </span>
+                                {event.type === 'SCHOOL' ? <Award size={16} /> :
+                                 event.type === 'HOLIDAY' ? <Star size={16} /> :
+                                 <Zap size={16} />}
+                              </div>
+                              {isAcked && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                                  <Check size={10} className="text-white" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <p className={`text-[11px] font-black uppercase tracking-tight truncate ${
+                                  isAcked ? 'text-white/40' : 'text-white'
+                                }`}>
+                                  {event.title}
+                                </p>
+                                <span className="text-[8px] text-white/30 uppercase tracking-widest shrink-0">
+                                  {event.time || 'Todo el dia'}
+                                </span>
+                              </div>
+                              <p className={`text-[10px] truncate leading-snug ${
+                                isAcked ? 'text-white/20' : 'text-white/50'
+                              }`}>
+                                {event.description || 'Sin descripcion'}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                  event.type === 'SCHOOL' ? 'bg-cyan-500/20 text-cyan-400' :
+                                  event.type === 'HOLIDAY' ? 'bg-orange-500/20 text-orange-400' :
+                                  'bg-[#DEFF9A]/20 text-[#DEFF9A]'
+                                }`}>
+                                  {event.type === 'SCHOOL' ? 'Escolar' :
+                                   event.type === 'HOLIDAY' ? 'Asueto' : 'TECLINGO'}
+                                </span>
+                                <span className="text-white/20 text-[8px]">
+                                  {event.day}/{event.month}/{event.year}
+                                </span>
+                              </div>
+                              {/* Botones de accion */}
+                              {!isAcked && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <button
+                                    onClick={() => handleViewEvent(event)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[8px] font-bold text-white/50 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all"
+                                  >
+                                    <ExternalLink size={10} /> Ver evento
+                                  </button>
+                                  <button
+                                    onClick={() => handleAcknowledgeEvent(event.id)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-[8px] font-bold text-green-400 hover:bg-green-500/20 transition-all"
+                                  >
+                                    <Check size={10} /> Visto
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     {upcomingCalendarEvents.length > 5 && (
                       <div className="px-4 py-2 border-t border-white/5 bg-white/[0.02]">
@@ -302,7 +378,7 @@ export function MessageNotificationBell({ onNavigateToChat, accentColor = '#DEFF
                 )}
 
                 {/* ── EMPTY STATE ── */}
-                {chatsWithUnread.length === 0 && upcomingCalendarEvents.length === 0 && (
+                {chatsWithUnread.length === 0 && unacknowledgedEvents.length === 0 && (
                   <div className="py-10 px-6 text-center space-y-3">
                     <Bell size={28} className="text-white/10 mx-auto" />
                     <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">

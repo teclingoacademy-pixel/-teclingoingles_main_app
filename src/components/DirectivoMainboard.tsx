@@ -229,6 +229,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
 
       <MessageNotificationBell
         onNavigateToChat={handleBellNavigateToChat}
+        onNavigateToCalendar={() => setCurrentView('calendario')}
         accentColor="#DEFF9A"
       />
 

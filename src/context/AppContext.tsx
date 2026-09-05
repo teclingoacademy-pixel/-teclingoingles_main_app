@@ -9,6 +9,22 @@ import { registrarMensaje, registrarChat, obtenerMensajes, obtenerChats } from '
 type Theme = 'dark' | 'light' | 'normal';
 type Language = 'es' | 'en';
 
+const CHAT_READ_STORAGE_KEY = 'teclingo_chat_read_timestamps';
+
+function getChatReadTimestamps(): Record<string, string> {
+  try {
+    const stored = localStorage.getItem(CHAT_READ_STORAGE_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* noop */ }
+  return {};
+}
+
+function saveChatReadTimestamp(chatId: string, timestamp: string): void {
+  const all = getChatReadTimestamps();
+  all[chatId] = timestamp;
+  localStorage.setItem(CHAT_READ_STORAGE_KEY, JSON.stringify(all));
+}
+
 interface Event {
   id: string;
   day: number;
@@ -505,6 +521,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!userEmail) return;
     let cancelled = false;
     const userEmailLower = userEmail.toLowerCase();
+    const savedReadTimestamps = getChatReadTimestamps();
 
     const cargarChats = async () => {
       try {
@@ -516,8 +533,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           remoteChats.forEach((rc: any) => {
             const existing = merged.find(c => c.id === rc.id);
             if (existing) {
-              // Si el last_message remoto es más nuevo que el local, marcarlo para refresh
-              // (la lógica de unreadCount se recalcula en cargarMensajesChat)
               return;
             }
             const chatType: ChatThread['type'] =
@@ -526,10 +541,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const normalizedParticipants: string[] = Array.isArray(rc.participants)
               ? Array.from(new Set(rc.participants.map((p: string) => String(p || '').trim().toLowerCase()).filter(Boolean)))
               : [];
-            // Inicializar unreadCount: el last_message es un preview, pero el conteo real
-            // se calculará cuando cargarMensajesChat traiga los mensajes
-            const isFromOther = rc.last_message && rc.last_message_at &&
-              new Date(rc.last_message_at).getTime() > 0;
+            const savedLastRead = savedReadTimestamps[rc.id] || '';
             merged.push({
               id: rc.id,
               name: rc.name || rc.id,
@@ -537,18 +549,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               participants: normalizedParticipants,
               messages: [],
               lastMessage: rc.last_message || '',
-              unreadCount: 0
+              unreadCount: 0,
+              lastReadAt: savedLastRead || undefined
             });
           });
           return merged;
         });
 
-        // Para cada chat remoto con mensajes, calcular no leídos basados en lastReadAt del chat
-        // Si el usuario NUNCA leyó el chat, todos los mensajes de otros cuentan como no leídos
         for (const rc of remoteChats) {
           const lastMsg = rc.last_message;
           if (!lastMsg) continue;
-          // Disparar carga de mensajes para calcular unread real
           cargarMensajesChat(rc.id);
         }
       } catch {}
@@ -556,7 +566,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     cargarChats();
 
-    // Polling: refrescar chats cada 15 segundos
     const interval = setInterval(cargarChats, 15000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [userEmail]);
@@ -631,6 +640,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Marcar un chat como leído (setea lastReadAt = ahora y resetea unreadCount)
   const markChatAsRead = useCallback((chatId: string) => {
     const now = new Date().toISOString();
+    saveChatReadTimestamp(chatId, now);
     setChats(prev => prev.map(chat =>
       chat.id === chatId
         ? { ...chat, lastReadAt: now, unreadCount: 0 }

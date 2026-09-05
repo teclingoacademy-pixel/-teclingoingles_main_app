@@ -494,6 +494,52 @@ export async function uploadAvatar(
   }
 }
 
+export interface UploadEvidenceResult {
+  ok: boolean;
+  fileUrl?: string;
+  fileId?: string;
+  evidenciaId?: string;
+  code?: string;
+  error?: string;
+}
+
+/** Sube imagen de evidencia (retraso, inasistencia, etc.) a la carpeta compartida de Drive */
+export async function uploadEvidence(
+  email: string,
+  imageBase64: string,
+  fileName: string = 'evidencia.jpg',
+  mimeType: string = 'image/jpeg',
+  tipo: string = 'retraso',
+  grupoId: string = '',
+  fecha: string = ''
+): Promise<UploadEvidenceResult> {
+  try {
+    const today = fecha || new Date().toISOString().slice(0, 10);
+    const res = await postAlLake({
+      action: 'uploadEvidence',
+      email: email.toLowerCase().trim(),
+      imageBase64,
+      fileName,
+      mimeType,
+      tipo,
+      grupo_id: grupoId,
+      fecha: today,
+    }, 30000); // 30s timeout para archivos grandes
+    if (res?.ok) {
+      return {
+        ok: true,
+        fileUrl: (res as any).fileUrl,
+        fileId: (res as any).fileId,
+        evidenciaId: (res as any).evidenciaId,
+      };
+    }
+    return { ok: false, code: res?.code, error: res?.error };
+  } catch (err) {
+    console.warn('[Identity] uploadEvidence error:', err);
+    return { ok: false, error: 'drive_unreachable' };
+  }
+}
+
 export interface UploadCertificationResult {
   ok: boolean;
   fileUrl?: string;
@@ -1000,6 +1046,7 @@ const identityService = {
   guardarPerfil,
   obtenerPerfilCompleto,
   uploadAvatar,
+  uploadEvidence,
   registrarChat,
   registrarMensaje,
   obtenerMensajes,
