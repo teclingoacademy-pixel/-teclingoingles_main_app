@@ -797,7 +797,7 @@ export function UserSettings({
       campos = {
         nombre: teacherData.name, avatar: teacherData.avatar,
         phone: teacherData.phone, bio: teacherData.bio,
-        curp: teacherData.curp, id_empleado: teacherData.id_empleado,
+        curp: teacherData.curp,
         birth_date: teacherData.birthDate, degree: teacherData.degree,
         specialties: JSON.stringify(teacherData.specialties),
         certifications: JSON.stringify(teacherData.certifications),

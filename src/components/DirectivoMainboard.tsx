@@ -66,8 +66,11 @@ import { AccessControlModule } from './AccessControlModule';
 import { AsistenciasMaster } from './AsistenciasMaster';
 import { ProfileOnboardingModal, isProfileComplete } from './ProfileOnboardingModal';
 import { obtenerPerfilCompleto } from '../services/identityService';
+import { fetchCalendarEvents, CalendarEvent } from '../services/calendarService';
 
 import { TeachersMaster } from './TeachersMaster';
+
+const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 
 interface DirectivoMainboardProps {
   currentRole: UserRole;
@@ -86,7 +89,6 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
     setIsSidebarOpen,
     institutionName,
     setInstitutionName,
-    globalEvents,
     managementEnabled,
     coursesEnabled,
     foliosEnabled,
@@ -101,6 +103,7 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [directorProfileData, setDirectorProfileData] = useState<Record<string, unknown>>({});
   const [institutionCode, setInstitutionCode] = useState<string>('');
+  const [nextEvent, setNextEvent] = useState<CalendarEvent | null>(null);
 
   // Cargar perfil del director para verificar si está completo
   useEffect(() => {
@@ -124,6 +127,42 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
       }
     };
     loadProfile();
+  }, [userEmail]);
+
+  // Cargar eventos reales del calendario y calcular el próximo evento
+  useEffect(() => {
+    const loadNextEvent = async () => {
+      try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+        // Cargar eventos del mes actual y los 2 siguientes
+        const events: CalendarEvent[] = [];
+        for (let m = 0; m < 3; m++) {
+          const month = ((currentMonth - 1 + m) % 12) + 1;
+          const year = currentMonth + m > 12 ? currentYear + 1 : currentYear;
+          const fetched = await fetchCalendarEvents(year, month);
+          events.push(...fetched);
+        }
+        // Filtrar solo eventos futuros (o de hoy) y ordenar por fecha ascendente
+        const todayStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const upcoming = events
+          .filter(e => {
+            const eDate = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
+            return eDate >= todayStr;
+          })
+          .sort((a, b) => {
+            const dA = a.year * 10000 + a.month * 100 + a.day;
+            const dB = b.year * 10000 + b.month * 100 + b.day;
+            return dA - dB;
+          });
+        setNextEvent(upcoming.length > 0 ? upcoming[0] : null);
+      } catch (err) {
+        console.warn('[DirectivoMainboard] Error loading next event:', err);
+        setNextEvent(null);
+      }
+    };
+    loadNextEvent();
   }, [userEmail]);
 
   // Copiar código al portapapeles
@@ -271,14 +310,14 @@ export function DirectivoMainboard({ currentRole, onRoleChange }: DirectivoMainb
                       </h1>
                     </div>
                     <div className="flex items-center gap-4 w-full md:w-auto">
-                        {globalEvents.length > 0 && (
+                        {nextEvent && (
                           <div className="px-6 py-3 rounded-2xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/20 flex items-center gap-4 hidden xl:flex">
                              <Calendar size={16} className="text-[#DEFF9A]" />
                              <div>
                                 <p className="text-[#DEFF9A] text-[8px] font-black uppercase tracking-widest leading-none">Próximo Evento</p>
-                                <p className="text-white text-[10px] font-bold uppercase truncate max-w-[150px]">{globalEvents[0].title}</p>
+                                <p className="text-white text-[10px] font-bold uppercase truncate max-w-[150px]">{nextEvent.title}</p>
                              </div>
-                             <div className="ml-2 px-2 py-1 bg-[#DEFF9A] rounded text-[8px] font-black text-black">MAYO</div>
+                             <div className="ml-2 px-2 py-1 bg-[#DEFF9A] rounded text-[8px] font-black text-black">{MONTH_NAMES_ES[nextEvent.month - 1]}</div>
                           </div>
                         )}
                         <button 

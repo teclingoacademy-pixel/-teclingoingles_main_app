@@ -22,20 +22,21 @@ import { useAppContext, Folio } from '../context/AppContext';
 import { SignaturePadComponent } from './SignaturePadComponent';
 
 export function FoliosDocente() {
-  const { folios, signFolio } = useAppContext();
+  const { folios, signFolio, userEmail, userName } = useAppContext();
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null);
   const [isSigning, setIsSigning] = useState(false);
 
-  // Filter folios assigned to "current teacher" (hardcoded to USR-901-B33 for demo)
-  const teacherId = 'USR-901-B33';
-  const myFolios = folios.filter(f => f.assignedToIds.includes(teacherId));
+  // Filter folios assigned to the current logged-in teacher
+  const myFolios = folios.filter(f => 
+    f.assignedToIds.includes(userEmail) || f.senderEmail === userEmail
+  );
 
   const handleConfirmSignature = (signatureData: string) => {
     if (!selectedFolio) return;
     
     signFolio(selectedFolio.id, {
-      teacherId,
-      teacherName: 'Ana López',
+      teacherId: userEmail,
+      teacherName: userName || userEmail,
       signatureData,
       timestamp: new Date().toLocaleTimeString()
     });
@@ -44,7 +45,7 @@ export function FoliosDocente() {
   };
 
   const isAlreadySigned = (folio: Folio) => {
-    return folio.signatures.some(s => s.teacherId === teacherId);
+    return folio.signatures.some(s => s.teacherId === userEmail);
   };
 
   return (
@@ -173,23 +174,23 @@ export function FoliosDocente() {
                       </p>
                    </div>
 
-                   <div className="pt-12 border-t border-white/10">
+                    <div className="pt-12 border-t border-white/10">
                       {isAlreadySigned(selectedFolio) ? (
                         <div className="bg-[#4ADE80]/5 border border-[#4ADE80]/20 rounded-[2.5rem] p-8 flex flex-col items-center">
                            <div className="text-center mb-6">
                               <p className="text-[#4ADE80] text-[10px] font-black uppercase tracking-[0.4em] mb-2">Folio Validado</p>
                               <div className="bg-white p-4 rounded-xl">
                                  <img 
-                                  src={selectedFolio.signatures.find(s => s.teacherId === teacherId)?.signatureData} 
+                                  src={selectedFolio.signatures.find(s => s.teacherId === userEmail)?.signatureData} 
                                   alt="Firma" 
                                   className="h-24 w-auto object-contain"
                                  />
                               </div>
                            </div>
                            <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.2em]">FIRMADO ELECTRÓNICAMENTE POR</p>
-                           <p className="text-white text-lg font-black uppercase mb-1">ANA LÓPEZ</p>
+                           <p className="text-white text-lg font-black uppercase mb-1">{userName || userEmail}</p>
                            <p className="text-white/40 text-[10px] font-mono tracking-widest uppercase">
-                              ID: {teacherId} • {selectedFolio.signatures.find(s => s.teacherId === teacherId)?.timestamp}
+                              ID: {userEmail} • {selectedFolio.signatures.find(s => s.teacherId === userEmail)?.timestamp}
                            </p>
                         </div>
                       ) : isSigning ? (

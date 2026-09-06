@@ -98,9 +98,12 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
     googleButtonRef.current.innerHTML = '';
 
     if (w.google?.accounts?.id) {
+      // Usar una referencia estable para el callback
       w.google.accounts.id.initialize({
         client_id: clientId,
-        callback: handleCredentialResponse,
+        callback: (response: GoogleCredentialResponse) => {
+          handleCredentialResponse(response);
+        },
       });
       w.google.accounts.id.renderButton(googleButtonRef.current, {
         theme: 'outline',
@@ -118,7 +121,7 @@ export function AuthPortal({ onLogin }: AuthPortalProps) {
         googleButtonRef.current.innerHTML = '';
       }
     };
-  }, [handleCredentialResponse]);
+  }, []); // Array vacío — solo se ejecuta una vez al montar
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

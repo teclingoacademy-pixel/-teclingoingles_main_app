@@ -10,7 +10,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycbyrQIoHHE-SppuPesuKeDh4uS3Kwk9Z5L1VI1_dZza_X1tT0g0N4D3v7DIduH92WGsm/exec';
+  'https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec';
 
 const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim() ||
@@ -537,6 +537,44 @@ export async function uploadEvidence(
   } catch (err) {
     console.warn('[Identity] uploadEvidence error:', err);
     return { ok: false, error: 'drive_unreachable' };
+  }
+}
+
+export interface Evidencia {
+  id: string;
+  user_id: string;
+  email: string;
+  nombre: string;
+  tipo: string;
+  grupo_id: string;
+  fecha: string;
+  file_name: string;
+  file_url: string;
+  file_id: string;
+  mime_type: string;
+  created_at: string;
+}
+
+/** Obtiene evidencias filtradas por grupo_id (para el docente) */
+export async function fetchEvidenciasPorGrupo(
+  email: string,
+  grupoId: string,
+  fecha?: string
+): Promise<{ ok: boolean; evidencias?: Evidencia[]; error?: string }> {
+  try {
+    const res = await postAlLake({
+      action: 'obtenerEvidenciasPorGrupo',
+      email: email.toLowerCase().trim(),
+      grupo_id: grupoId,
+      fecha: fecha || '',
+    }, 15000);
+    if (res?.ok) {
+      return { ok: true, evidencias: (res as any).evidencias || [] };
+    }
+    return { ok: false, error: res?.error || 'fetch_failed' };
+  } catch (err) {
+    console.warn('[Identity] fetchEvidenciasPorGrupo error:', err);
+    return { ok: false, error: 'network_error' };
   }
 }
 

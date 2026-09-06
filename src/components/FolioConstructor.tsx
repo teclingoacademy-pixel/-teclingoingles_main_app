@@ -32,16 +32,16 @@ interface FolioData {
 }
 
 export function FolioConstructor() {
-  const { addFolio } = useAppContext();
+  const { addFolio, userEmail, userName } = useAppContext();
   
   const [data, setData] = useState<FolioData>({
     id: `TEC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    recipientIds: ['USR-901-B33'],
-    recipient: 'Dirección General',
+    recipientIds: [],
+    recipient: '',
     date: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
-    title: 'CIRCULAR INSTITUCIONAL 042',
-    subject: 'Protocolo de Evaluación Segundo Parcial',
-    body: 'Por medio de la presente, se hace de su conocimiento el nuevo protocolo de evaluación para el segundo parcial del ciclo 2026-A. Es imperativo que todos los docentes del área de inglés sincronicen sus evidencias fotográficas antes del cierre de plataforma el próximo viernes.\n\nSin más por el momento, agradezco su compromiso con la visión Zero-Paper de nuestra institución.',
+    title: '',
+    subject: '',
+    body: '',
   });
 
   const [isProcessing, setIsProcessing] = useState<'NONE' | 'PDF' | 'SEND'>('NONE');
@@ -56,7 +56,8 @@ export function FolioConstructor() {
         subject: data.subject,
         content: data.body,
         date: data.date,
-        senderName: 'Dirección General',
+        senderName: userName || 'Direccion',
+        senderEmail: userEmail,
         assignedToIds: data.recipientIds,
         signatures: [],
         evidence: [],
@@ -69,10 +70,10 @@ export function FolioConstructor() {
         // Reset form
         setData({
           id: `TEC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-          recipientIds: ['USR-901-B33'],
+          recipientIds: [],
           recipient: '',
           date: new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }),
-          title: 'CIRCULAR INSTITUCIONAL 042',
+          title: '',
           subject: '',
           body: '',
         });

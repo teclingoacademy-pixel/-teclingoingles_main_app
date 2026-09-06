@@ -47,7 +47,7 @@ import { GlassCard } from './GlassCard';
 import { LibroVirtual } from './LibroVirtual';
 
 const API_URL_READ = "https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec";
-const API_URL_WRITE = "https://script.google.com/macros/s/AKfycbyrQIoHHE-SppuPesuKeDh4uS3Kwk9Z5L1VI1_dZza_X1tT0g0N4D3v7DIduH92WGsm/exec";
+const API_URL_WRITE = "https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec";
 
 // Interfaces
 interface LibraryDoc {

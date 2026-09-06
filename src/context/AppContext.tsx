@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { registrarMensaje, registrarChat, obtenerMensajes, obtenerChats } from '../services/identityService';
+import { crearFolio as crearFolioAPI, obtenerFolios as obtenerFoliosAPI, firmarFolio as firmarFolioAPI, completarFolio as completarFolioAPI } from '../services/folioService';
 
 type Theme = 'dark' | 'light' | 'normal';
 type Language = 'es' | 'en';
@@ -142,6 +143,7 @@ export interface Folio {
   content: string;
   date: string;
   senderName: string;
+  senderEmail?: string;
   assignedToIds: string[]; // Teacher IDs
   signatures: FolioSignature[];
   evidence: FolioEvidence[];
@@ -428,52 +430,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [chats, setChats] = useState<ChatThread[]>([]);
   const loadingChatsRef = useRef<Set<string>>(new Set());
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [folios, setFolios] = useState<Folio[]>([
-    {
-      id: 'FOL-2026-042',
-      title: 'Circular Informativa 042',
-      subject: 'Protocolo de Evaluación Verano',
-      content: 'Estimados docentes, se les recuerda que a partir del próximo ciclo el porcentaje de evidencia diaria impactará en el 15% del KPI Operativo...',
-      date: '12 MAY, 2026',
-      senderName: 'Dirección Central',
-      assignedToIds: ['USR-901-B33'],
-      signatures: [],
-      evidence: [],
-      status: 'PENDING'
-    }
-  ]);
+  const [folios, setFolios] = useState<Folio[]>([]);
 
-  const addFolio = (folio: Folio) => {
+  const addFolio = useCallback((folio: Folio) => {
     setFolios(prev => [folio, ...prev]);
-  };
+    // Dual-write: persistir al Data Lake (fire-and-forget)
+    crearFolioAPI({
+      title: folio.title,
+      subject: folio.subject,
+      content: folio.content,
+      date: folio.date,
+      assigned_to_ids: folio.assignedToIds,
+    }).catch(err => console.warn('[AppContext] addFolio API error:', err));
+  }, []);
 
-  const signFolio = (folioId: string, signature: FolioSignature) => {
+  const signFolio = useCallback((folioId: string, signature: FolioSignature) => {
     setFolios(prev => prev.map(f => {
       if (f.id === folioId) {
-        return {
-          ...f,
-          signatures: [...f.signatures, signature]
-        };
+        return { ...f, signatures: [...f.signatures, signature] };
       }
       return f;
     }));
-  };
+    // Dual-write: persistir firma al Data Lake
+    firmarFolioAPI({
+      folio_id: folioId,
+      teacher_name: signature.teacherName,
+      signature_url: signature.signatureData,
+    }).catch(err => console.warn('[AppContext] signFolio API error:', err));
+  }, []);
 
-  const addFolioEvidence = (folioId: string, item: FolioEvidence) => {
+  const addFolioEvidence = useCallback((folioId: string, item: FolioEvidence) => {
     setFolios(prev => prev.map(f => {
       if (f.id === folioId) {
-        return {
-          ...f,
-          evidence: [...f.evidence, item]
-        };
+        return { ...f, evidence: [...f.evidence, item] };
       }
       return f;
     }));
-  };
+  }, []);
 
-  const completeFolio = (folioId: string) => {
+  const completeFolio = useCallback((folioId: string) => {
     setFolios(prev => prev.map(f => f.id === folioId ? { ...f, status: 'COMPLETED' } : f));
-  };
+    completarFolioAPI(folioId).catch(err => console.warn('[AppContext] completeFolio API error:', err));
+  }, []);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [institutionName, setInstitutionName] = useState('TECNOLINGO AI');
@@ -489,6 +487,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem('teclingo_user_email', userEmail);
+  }, [userEmail]);
+
+  // Cargar folios reales del Data Lake al montar
+  useEffect(() => {
+    if (!userEmail) return;
+    const loadFolios = async () => {
+      try {
+        const res = await obtenerFoliosAPI({});
+        if (res.ok && res.folios.length > 0) {
+          const mapped: Folio[] = res.folios.map((f: any) => ({
+            id: f.folio_id,
+            title: f.title,
+            subject: f.subject,
+            content: f.content,
+            date: f.date,
+            senderName: f.sender_name,
+            senderEmail: f.sender_email,
+            assignedToIds: String(f.assigned_to_ids || '').split(',').filter(Boolean),
+            signatures: [],
+            evidence: [],
+            status: f.status || 'PENDING',
+          }));
+          setFolios(mapped);
+        }
+      } catch (err) {
+        console.warn('[AppContext] loadFolios error:', err);
+      }
+    };
+    loadFolios();
   }, [userEmail]);
 
   useEffect(() => {
