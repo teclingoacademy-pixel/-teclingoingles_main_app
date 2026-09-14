@@ -13,7 +13,7 @@
 
 const IDENTITY_API_URL =
   (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() ||
-  'https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec';
+  'https://script.google.com/macros/s/AKfycbz1OBcF2logEt-r_gaOdpG9MhcjsVkz3_MZiJKf9iSS1T1lpYmAj_MoFtrssCnT7q-k/exec';
 
 export type FolioStatus = 'PENDING' | 'COMPLETED';
 

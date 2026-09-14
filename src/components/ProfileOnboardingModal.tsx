@@ -23,7 +23,8 @@ interface ProfileOnboardingModalProps {
 
 /**
  * Determina si el perfil está completo según el rol.
- * Campos obligatorios para ALUMNO: name, studentId, career, shift, semestre, moduloTec
+ * Campos obligatorios para ALUMNO: name, studentId, moduloTec
+ *   (career / shift / semestre se eliminaron en esta versión exclusiva de inglés)
  * Campos obligatorios para DOCENTE: name, curp, degree
  * Campos obligatorios para DIRECTOR: name, institutionName
  */
@@ -32,9 +33,6 @@ function isProfileComplete(role: string, data: Record<string, unknown>): boolean
     return Boolean(
       data.name && String(data.name).trim() &&
       data.studentId && String(data.studentId).trim() &&
-      data.career && String(data.career).trim() &&
-      data.shift && String(data.shift).trim() &&
-      data.semestre && String(data.semestre).trim() &&
       data.moduloTec && String(data.moduloTec).trim()
     );
   }
@@ -62,9 +60,6 @@ function getMissingFields(role: string, data: Record<string, unknown>): string[]
   if (role === 'ALUMNO') {
     if (!data.name || !String(data.name).trim()) missing.push('Nombre completo');
     if (!data.studentId || !String(data.studentId).trim()) missing.push('Número de control');
-    if (!data.career || !String(data.career).trim()) missing.push('Carrera');
-    if (!data.shift || !String(data.shift).trim()) missing.push('Turno');
-    if (!data.semestre || !String(data.semestre).trim()) missing.push('Semestre');
     if (!data.moduloTec || !String(data.moduloTec).trim()) missing.push('Módulo TEC');
   } else if (role === 'DOCENTE') {
     if (!data.name || !String(data.name).trim()) missing.push('Nombre completo');

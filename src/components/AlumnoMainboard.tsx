@@ -113,9 +113,7 @@ interface AlumnoMainboardProps {
           const profileFields = {
             name: perfil.nombre || '',
             studentId: perfil.student_id || '',
-            career: perfil.carrera || '',
-            shift: perfil.turno || '',
-            semestre: perfil.semestre || '',
+            // career / shift / semestre ya no existen en esta versión exclusiva de inglés
             moduloTec: perfil.modulo_tec || '',
           };
           setStudentProfileData(profileFields);
@@ -529,7 +527,31 @@ function EvidenceUploadSection({ userEmail }: EvidenceUploadSectionProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedGrupoId, setSelectedGrupoId] = useState<string>('');
+  const [grupos, setGrupos] = useState<{ grupo_id: string; nombre: string; code_id: string }[]>([]);
+  const [loadingGrupos, setLoadingGrupos] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load student's groups
+  useEffect(() => {
+    const loadGrupos = async () => {
+      if (!userEmail) return;
+      try {
+        const { misGruposIngles } = await import('../services/identityService');
+        const misGrupos = await misGruposIngles(userEmail);
+        setGrupos(misGrupos.map(g => ({
+          grupo_id: g.grupo_id,
+          nombre: g.nombre || `Grupo ${g.grupo}`,
+          code_id: g.code_id || g.grupo_id,
+        })));
+      } catch (err) {
+        console.warn('[EvidenceUpload] Error loading groups:', err);
+      } finally {
+        setLoadingGrupos(false);
+      }
+    };
+    loadGrupos();
+  }, [userEmail]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -572,14 +594,15 @@ function EvidenceUploadSection({ userEmail }: EvidenceUploadSectionProps) {
         base64Data,
         fileName,
         'image/jpeg',
-        'retraso',
-        '',
+        'alumno_clase',
+        selectedGrupoId,
         new Date().toISOString().slice(0, 10)
       );
 
       if (result.ok) {
         setUploadStatus('success');
         setPreviewUrl(null);
+        setSelectedGrupoId('');
         // Reset file input
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -611,6 +634,33 @@ function EvidenceUploadSection({ userEmail }: EvidenceUploadSectionProps) {
               <p className="text-white/60 text-[11px] font-medium leading-relaxed italic">
                 "Sube la evidencia de hoy para validar tu sesión ante Dirección. El sistema TECLINGO PRO 1.1 analizará el contexto pedagógico."
               </p>
+
+              {/* Group Selector */}
+              <div className="space-y-2">
+                <label className="text-[9px] font-bold text-white/30 uppercase tracking-widest ml-1">Seleccionar Grupo *</label>
+                {loadingGrupos ? (
+                  <div className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white/40 text-xs">
+                    Cargando grupos...
+                  </div>
+                ) : grupos.length === 0 ? (
+                  <div className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white/40 text-xs">
+                    No tienes grupos asignados
+                  </div>
+                ) : (
+                  <select
+                    value={selectedGrupoId}
+                    onChange={(e) => setSelectedGrupoId(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-xs font-bold focus:border-[#22D3EE]/40 outline-none appearance-none"
+                  >
+                    <option value="" className="bg-[#061a1a]">-- Selecciona un grupo --</option>
+                    {grupos.map(g => (
+                      <option key={g.grupo_id} value={g.grupo_id} className="bg-[#061a1a]">
+                        {g.code_id} - {g.nombre}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 <div className="px-3 py-1.5 rounded-lg bg-[#22D3EE]/10 border border-[#22D3EE]/20 text-[#22D3EE] text-[8px] font-black uppercase tracking-widest">JPG, PNG</div>
@@ -645,9 +695,9 @@ function EvidenceUploadSection({ userEmail }: EvidenceUploadSectionProps) {
               {/* Upload Button */}
               <button
                 onClick={handleUpload}
-                disabled={!previewUrl || isUploading}
+                disabled={!previewUrl || !selectedGrupoId || isUploading}
                 className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                  !previewUrl || isUploading
+                  !previewUrl || !selectedGrupoId || isUploading
                     ? 'bg-white/5 border border-white/10 text-white/20 cursor-not-allowed'
                     : 'bg-[#22D3EE]/20 border border-[#22D3EE]/30 text-[#22D3EE] hover:bg-[#22D3EE] hover:text-[#061a1a]'
                 }`}

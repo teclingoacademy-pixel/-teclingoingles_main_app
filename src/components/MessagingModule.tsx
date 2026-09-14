@@ -26,11 +26,14 @@ import {
   X,
   Volume2,
   Crown,
-  ArrowLeft
+  ArrowLeft,
+  Contact,
+  UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext, ChatThread, Message as AppMessage } from '../context/AppContext';
 import { UserHierarchyModal, User } from './UsersMaster';
+import { listarUsuarios, UsuarioComunidad } from '../services/identityService';
 
 // Helper to convert Chat to User for the modal
 export const chatToUser = (chat: ChatThread): User => ({
@@ -59,6 +62,10 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
   const [broadcastText, setBroadcastText] = useState('');
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const [activeTab, setActiveTab] = useState<'contactos' | 'mensajes'>('mensajes');
+  const [contactos, setContactos] = useState<UsuarioComunidad[]>([]);
+  const [loadingContactos, setLoadingContactos] = useState(false);
+  const [contactFilter, setContactFilter] = useState<'TODOS' | 'DIRECTOR' | 'DOCENTE' | 'ALUMNO'>('TODOS');
 
   useEffect(() => {
     if (initialChatId) {
@@ -128,6 +135,26 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
     }, 10000);
     return () => clearInterval(interval);
   }, [selectedChatId]);
+
+  // Cargar contactos cuando se selecciona la pestaña de contactos o cambia el filtro
+  useEffect(() => {
+    if (activeTab !== 'contactos') return;
+    
+    const cargarContactos = async () => {
+      setLoadingContactos(true);
+      try {
+        const filtroBackend = contactFilter === 'TODOS' ? 'TODOS' : contactFilter;
+        const usuarios = await listarUsuarios(filtroBackend, search);
+        setContactos(usuarios);
+      } catch (error) {
+        console.error('Error cargando contactos:', error);
+      } finally {
+        setLoadingContactos(false);
+      }
+    };
+    
+    cargarContactos();
+  }, [activeTab, contactFilter]);
 
   const filteredChats = useMemo(() => {
     return chats.filter(chat => {
@@ -209,115 +236,257 @@ export function MessagingModule({ initialChatId, initialPrefilledText }: { initi
     <div className="h-[calc(100vh-140px)] md:h-[calc(100vh-200px)] grid grid-cols-12 gap-4 lg:gap-8 pb-12 animate-in fade-in duration-700">
       {/* Sidebar: Red de Apoyo List */}
       <div className={`col-span-12 lg:col-span-4 flex flex-col gap-4 lg:gap-6 h-full ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
-         <div className="space-y-6">
-            <header className="flex items-center justify-between">
-               <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#DEFF9A] shadow-[0_0_8px_#DEFF9A]" />
-                    <h2 className="text-[#DEFF9A] text-[10px] font-black uppercase tracking-[0.4em]">Sincronización Real-Time</h2>
-                  </div>
-                  <h1 className="text-3xl font-black text-white bevel-text uppercase tracking-tight">Red de Apoyo</h1>
-               </div>
-               
-               {currentRole === 'DIRECTOR' && (
-                 <button 
-                  onClick={() => setShowBroadcastModal(true)}
-                  className="p-3 bg-[#DEFF9A] text-black rounded-2xl shadow-[0_0_20px_rgba(222,255,154,0.4)] hover:scale-105 transition-all"
-                  title="Broadcast Institucional"
-                 >
-                    <Volume2 size={20} />
-                 </button>
-               )}
-            </header>
-
-            <div className="relative group">
-               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#DEFF9A] transition-colors" size={18} />
-               <input 
-                type="text" 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar chats o grupos..."
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-white text-[11px] placeholder:text-white/10 outline-none focus:border-[#DEFF9A]/40 transition-all font-bold"
-               />
-            </div>
-         </div>
-
-         <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-            {filteredChats.map((chat) => (
-              <motion.button 
-                key={chat.id}
-                whileHover={{ x: 5 }}
-                onClick={() => {
-                   setSelectedChatId(chat.id);
-                   setMobileView('chat');
-                }}
-                className={`w-full p-4 rounded-[2rem] border text-left flex items-center gap-4 group transition-all relative overflow-hidden ${
-                  selectedChatId === chat.id 
-                  ? 'bg-[#DEFF9A]/10 border-[#DEFF9A]/20 shadow-[0_10px_30px_rgba(222,255,154,0.05)]' 
-                  : 'bg-white/[0.01] border-white/5 hover:border-white/10'
-                }`}
-              >
-                 <div className="relative">
-                    <div className="w-12 h-12 rounded-2xl border border-white/10 overflow-hidden group-hover:border-[#DEFF9A]/40 transition-all bg-black/40 flex items-center justify-center text-[#DEFF9A]">
-                       {chat.type === 'GROUP' ? <Users size={20} /> : <Crown size={20} />}
-                    </div>
-                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#061a1a] bg-[#4ADE80] shadow-[0_0_10px_#4ADE80]" />
-                 </div>
-
-                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                       <h4 className="text-white text-[13px] font-black uppercase tracking-tight truncate">
-                         {(() => {
-                           if (chat.type !== 'DIRECT') return chat.name;
-                           const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
-                           const resolved = otherEmail && chat.participantNames?.[otherEmail];
-                           return resolved || chat.name;
-                         })()}
-                       </h4>
-                       <span className="text-white/20 text-[8px] font-black">
-                          {chat.messages[chat.messages.length - 1]?.timestamp || '...'}
-                       </span>
-                    </div>
-                    <div className="flex items-center gap-2 mb-1">
-                      {chat.type === 'DIRECT' ? (() => {
-                        const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
-                        const role = otherEmail && chat.participantRoles?.[otherEmail];
-                        const roleColors: Record<string, string> = {
-                          DIRECTOR: 'bg-amber-500/20 text-amber-400',
-                          DOCENTE: 'bg-purple-500/20 text-purple-400',
-                          ALUMNO: 'bg-cyan-500/20 text-cyan-400'
-                        };
-                        return role ? (
-                          <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${roleColors[role] || 'bg-blue-500/20 text-blue-400'}`}>
-                            {role}
-                          </span>
-                        ) : (
-                          <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                            DIRECT
-                          </span>
-                        );
-                      })() : (
-                      <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
-                        chat.type === 'GLOBAL' ? 'bg-orange-500/20 text-orange-400' :
-                        chat.type === 'GROUP' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
-                        'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {chat.type} CHANNEL
-                      </span>
-                      )}
-                    </div>
-                    <p className={`text-[10px] truncate font-medium ${chat.unreadCount > 0 ? 'text-[#DEFF9A] font-black' : 'text-white/20'}`}>
-                       {chat.lastMessage || 'Inicia la conversación...'}
-                    </p>
-                 </div>
-
-                 {chat.unreadCount > 0 && (
-                   <div className="bg-[#DEFF9A] text-black text-[9px] font-black px-2 py-0.5 rounded-full shadow-[0_0_10px_#DEFF9A]">
-                      {chat.unreadCount}
+          <div className="space-y-6">
+             <header className="flex items-center justify-between">
+                <div>
+                   <div className="flex items-center gap-2 mb-2">
+                     <div className="w-1.5 h-1.5 rounded-full bg-[#DEFF9A] shadow-[0_0_8px_#DEFF9A]" />
+                     <h2 className="text-[#DEFF9A] text-[10px] font-black uppercase tracking-[0.4em]">Sincronización Real-Time</h2>
                    </div>
-                 )}
-              </motion.button>
-            ))}
+                   <h1 className="text-3xl font-black text-white bevel-text uppercase tracking-tight">
+                     {activeTab === 'contactos' ? 'Contactos' : 'Red de Apoyo'}
+                   </h1>
+                </div>
+                
+                {currentRole === 'DIRECTOR' && (
+                  <button 
+                   onClick={() => setShowBroadcastModal(true)}
+                   className="p-3 bg-[#DEFF9A] text-black rounded-2xl shadow-[0_0_20px_rgba(222,255,154,0.4)] hover:scale-105 transition-all"
+                   title="Broadcast Institucional"
+                  >
+                     <Volume2 size={20} />
+                  </button>
+                )}
+             </header>
+
+             {/* Botones de pestañas */}
+             <div className="flex gap-2 p-1 bg-white/5 rounded-2xl border border-white/10">
+               <button
+                 onClick={() => setActiveTab('contactos')}
+                 className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                   activeTab === 'contactos'
+                     ? 'bg-[#DEFF9A] text-black shadow-[0_0_15px_rgba(222,255,154,0.3)]'
+                     : 'text-white/40 hover:text-white/60'
+                 }`}
+               >
+                 <Contact size={16} />
+                 Contactos
+               </button>
+               <button
+                 onClick={() => setActiveTab('mensajes')}
+                 className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                   activeTab === 'mensajes'
+                     ? 'bg-[#DEFF9A] text-black shadow-[0_0_15px_rgba(222,255,154,0.3)]'
+                     : 'text-white/40 hover:text-white/60'
+                 }`}
+               >
+                 <MessageSquare size={16} />
+                 Mensajes
+               </button>
+             </div>
+
+             <div className="relative group">
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#DEFF9A] transition-colors" size={18} />
+                <input 
+                 type="text" 
+                 value={search}
+                 onChange={(e) => setSearch(e.target.value)}
+                 placeholder={activeTab === 'contactos' ? 'Buscar contactos...' : 'Buscar chats o grupos...'}
+                 className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-white text-[11px] placeholder:text-white/10 outline-none focus:border-[#DEFF9A]/40 transition-all font-bold"
+                />
+             </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+            {activeTab === 'contactos' ? (
+              // Vista de Contactos
+              loadingContactos ? (
+                <div className="flex flex-col items-center justify-center h-40 space-y-3">
+                  <div className="w-8 h-8 border-2 border-[#DEFF9A] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">Cargando contactos...</p>
+                </div>
+              ) : contactos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 space-y-3 text-center">
+                  <Contact size={32} className="text-white/20" />
+                  <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">No hay contactos disponibles</p>
+                </div>
+              ) : (
+                <>
+                  {/* Filtros por rol - Solo para DIRECTOR */}
+                  {currentRole === 'DIRECTOR' && (
+                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                      {[
+                        { label: 'Todos', value: 'TODOS' as const, icon: Users, count: contactos.length },
+                        { label: 'Directores', value: 'DIRECTOR' as const, icon: Crown, count: contactos.filter(c => c.rol === 'DIRECTOR').length },
+                        { label: 'Docentes', value: 'DOCENTE' as const, icon: GraduationCap, count: contactos.filter(c => c.rol === 'DOCENTE').length },
+                        { label: 'Alumnos', value: 'ALUMNO' as const, icon: UserPlus, count: contactos.filter(c => c.rol === 'ALUMNO').length },
+                      ].map((btn) => (
+                        <button
+                          key={btn.value}
+                          onClick={() => setContactFilter(btn.value)}
+                          className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${
+                            contactFilter === btn.value
+                              ? 'bg-[#DEFF9A]/10 border-[#DEFF9A]/30 text-[#DEFF9A] shadow-[0_0_10px_#DEFF9A15]'
+                              : 'bg-white/5 border-white/10 text-white/40 hover:text-white hover:border-white/20'
+                          }`}
+                        >
+                          <btn.icon size={12} />
+                          {btn.label}
+                          <span className="ml-1 px-1.5 py-0.5 rounded bg-white/10 text-[8px]">
+                            {btn.count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Lista de contactos filtrados */}
+                  {contactos
+                    .filter(c => {
+                      const matchesSearch = 
+                        c.nombre.toLowerCase().includes(search.toLowerCase()) ||
+                        c.email.toLowerCase().includes(search.toLowerCase());
+                      const matchesRole = contactFilter === 'TODOS' || c.rol === contactFilter;
+                      return matchesSearch && matchesRole;
+                    })
+                    .map((contacto) => (
+                      <motion.button
+                        key={contacto.id}
+                        whileHover={{ x: 5 }}
+                        onClick={() => {
+                          // Crear o abrir chat directo con este contacto
+                          const chatId = `DIRECT-${userEmail.toLowerCase()}_${contacto.email.toLowerCase()}`;
+                          createGroupChat(chatId, contacto.nombre, [userEmail, contacto.email]);
+                          setSelectedChatId(chatId);
+                          setMobileView('chat');
+                          setActiveTab('mensajes');
+                        }}
+                        className="w-full p-4 rounded-[2rem] border text-left flex items-center gap-4 group transition-all relative overflow-hidden bg-white/[0.01] border-white/5 hover:border-white/10"
+                      >
+                        <div className="relative">
+                          <div className="w-12 h-12 rounded-2xl border border-white/10 overflow-hidden group-hover:border-[#DEFF9A]/40 transition-all bg-black/40 flex items-center justify-center text-[#DEFF9A]">
+                            {contacto.rol === 'DIRECTOR' ? <Crown size={20} /> : 
+                             contacto.rol === 'DOCENTE' ? <GraduationCap size={20} /> : <Users size={20} />}
+                          </div>
+                          <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#061a1a] ${
+                            contacto.status === 'ACTIVE' ? 'bg-[#4ADE80] shadow-[0_0_10px_#4ADE80]' : 'bg-red-500'
+                          }`} />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <h4 className="text-white text-[13px] font-black uppercase tracking-tight truncate">
+                              {contacto.nombre}
+                            </h4>
+                            <span className="text-white/20 text-[8px] font-black">
+                              {contacto.joinDate || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                              contacto.rol === 'DIRECTOR' ? 'bg-amber-500/20 text-amber-400' :
+                              contacto.rol === 'DOCENTE' ? 'bg-purple-500/20 text-purple-400' :
+                              'bg-cyan-500/20 text-cyan-400'
+                            }`}>
+                              {contacto.rol}
+                            </span>
+                            {contacto.location && (
+                              <span className="text-[7px] font-bold text-white/20 truncate max-w-[100px]">
+                                {contacto.location}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] truncate font-medium text-white/20">
+                            {contacto.email}
+                          </p>
+                        </div>
+
+                        <div className="text-white/20 group-hover:text-[#DEFF9A] transition-colors">
+                          <MessageSquare size={16} />
+                        </div>
+                      </motion.button>
+                    ))
+                  }
+                </>
+              )
+            ) : (
+              // Vista de Mensajes (comportamiento original)
+              filteredChats.map((chat) => (
+                <motion.button 
+                  key={chat.id}
+                  whileHover={{ x: 5 }}
+                  onClick={() => {
+                     setSelectedChatId(chat.id);
+                     setMobileView('chat');
+                  }}
+                  className={`w-full p-4 rounded-[2rem] border text-left flex items-center gap-4 group transition-all relative overflow-hidden ${
+                    selectedChatId === chat.id 
+                    ? 'bg-[#DEFF9A]/10 border-[#DEFF9A]/20 shadow-[0_10px_30px_rgba(222,255,154,0.05)]' 
+                    : 'bg-white/[0.01] border-white/5 hover:border-white/10'
+                  }`}
+                >
+                   <div className="relative">
+                      <div className="w-12 h-12 rounded-2xl border border-white/10 overflow-hidden group-hover:border-[#DEFF9A]/40 transition-all bg-black/40 flex items-center justify-center text-[#DEFF9A]">
+                         {chat.type === 'GROUP' ? <Users size={20} /> : <Crown size={20} />}
+                      </div>
+                      <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#061a1a] bg-[#4ADE80] shadow-[0_0_10px_#4ADE80]" />
+                   </div>
+
+                   <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                         <h4 className="text-white text-[13px] font-black uppercase tracking-tight truncate">
+                           {(() => {
+                             if (chat.type !== 'DIRECT') return chat.name;
+                             const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                             const resolved = otherEmail && chat.participantNames?.[otherEmail];
+                             return resolved || chat.name;
+                           })()}
+                         </h4>
+                         <span className="text-white/20 text-[8px] font-black">
+                            {chat.messages[chat.messages.length - 1]?.timestamp || '...'}
+                         </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        {chat.type === 'DIRECT' ? (() => {
+                          const otherEmail = chat.participants.find(p => p.toLowerCase() !== userEmail.toLowerCase());
+                          const role = otherEmail && chat.participantRoles?.[otherEmail];
+                          const roleColors: Record<string, string> = {
+                            DIRECTOR: 'bg-amber-500/20 text-amber-400',
+                            DOCENTE: 'bg-purple-500/20 text-purple-400',
+                            ALUMNO: 'bg-cyan-500/20 text-cyan-400'
+                          };
+                          return role ? (
+                            <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${roleColors[role] || 'bg-blue-500/20 text-blue-400'}`}>
+                              {role}
+                            </span>
+                          ) : (
+                            <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                              DIRECT
+                            </span>
+                          );
+                        })() : (
+                        <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                          chat.type === 'GLOBAL' ? 'bg-orange-500/20 text-orange-400' :
+                          chat.type === 'GROUP' ? 'bg-[#DEFF9A]/20 text-[#DEFF9A]' :
+                          'bg-blue-500/20 text-blue-400'
+                        }`}>
+                          {chat.type} CHANNEL
+                        </span>
+                        )}
+                      </div>
+                      <p className={`text-[10px] truncate font-medium ${chat.unreadCount > 0 ? 'text-[#DEFF9A] font-black' : 'text-white/20'}`}>
+                         {chat.lastMessage || 'Inicia la conversación...'}
+                      </p>
+                   </div>
+
+                   {chat.unreadCount > 0 && (
+                     <div className="bg-[#DEFF9A] text-black text-[9px] font-black px-2 py-0.5 rounded-full shadow-[0_0_10px_#DEFF9A]">
+                        {chat.unreadCount}
+                     </div>
+                   )}
+                </motion.button>
+              ))
+            )}
          </div>
       </div>
 

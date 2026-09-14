@@ -45,9 +45,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
 import { LibroVirtual } from './LibroVirtual';
+import { guardarPlaneacionSemana, SemanaPlaneacion } from '../services/workbook/planeacionService';
+import { useAppContext } from '../context/AppContext';
 
-const API_URL_READ = "https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec";
-const API_URL_WRITE = "https://script.google.com/macros/s/AKfycby7SoFITEh4jp_MdvH3pwoi8HhdvOwJfmDC0l-0E6lTY0FBbs5y3MGyBLLJcoEnxpit/exec";
+const API_URL_READ = (import.meta.env.VITE_IDENTITY_API_URL as string | undefined)?.trim() || "https://script.google.com/macros/s/AKfycbz7buTc2D7FIgWVub6_t4leXfvqc68821957LHOUgP-mBqpWKn_7JaEU-DZWiumAcVb/exec";
+const API_URL_WRITE = API_URL_READ;
 
 // Interfaces
 interface LibraryDoc {
@@ -143,6 +145,7 @@ const mockGroupDiagnoses: Record<string, GroupDiagnosis> = {
 };
 
 export function DirectorLibrary() {
+  const { userEmail } = useAppContext();
   const [activeSubTab, setActiveSubTab] = useState<
     'Plan de Estudio' | 'Cargas & Archivos' | 'Libro Virtual Maestro' | 'Estructura Reticular' | 'Distribución Académica' | 'Creador de Exámenes'
   >('Plan de Estudio');
@@ -245,7 +248,7 @@ export function DirectorLibrary() {
     }
   }, [createdExams]);
 
-  // Cargar malla curricular desde Google Sheets
+  // Cargar malla curricular desde Google Sheets + Data Lake planeación
   useEffect(() => {
     const fetchMallaCurricular = async () => {
       try {
@@ -274,6 +277,41 @@ export function DirectorLibrary() {
           kpi: row.kpi || '',
           horas: typeof row.horas_json === 'string' ? JSON.parse(row.horas_json) : (row.horas || [])
         }));
+
+        // Also fetch planeación from Data Lake PLANEACION_SEMANAS
+        try {
+          const planeRes = await fetch(API_URL_WRITE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'obtenerPlaneacion', secret: 'teclingo_secret_2026' })
+          });
+          const planeData = await planeRes.json();
+          if (planeData.ok && planeData.data && planeData.data.length > 0) {
+            planeData.data.forEach((p: any) => {
+              const semanaNum = Number(p.semana);
+              const existing = transformedData.find(w => w.semana === semanaNum);
+              if (existing) {
+                existing.eje_tematico = p.eje_tematico || existing.eje_tematico;
+                existing.unidad_libro = p.unidad_libro || existing.unidad_libro;
+                existing.kpi = p.kpi || existing.kpi;
+              } else {
+                let horas = [];
+                try { horas = JSON.parse(p.horas_json || '[]'); } catch {}
+                transformedData.push({
+                  semana: semanaNum,
+                  fechas: p.fecha_inicio ? `${p.fecha_inicio} - ${p.fecha_fin}` : '',
+                  eje_tematico: p.eje_tematico || '',
+                  unidad_libro: p.unidad_libro || '',
+                  paginas: '',
+                  kpi: p.kpi || '',
+                  horas
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[DirectorLibrary] Data Lake planeación no disponible:', e);
+        }
         
         setMallaCurricularData(transformedData);
       } catch (error) {
@@ -442,6 +480,7 @@ export function DirectorLibrary() {
   });
 
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isSyncingPlaneacion, setIsSyncingPlaneacion] = useState(false);
 
   const [activeUploadTab, setActiveUploadTab] = useState<'JSON' | 'PDF' | 'PLAIN'>('JSON');
   const [plainText, setPlainText] = useState('');
@@ -628,6 +667,38 @@ export function DirectorLibrary() {
 
   const toggleWeek = (weekNum: number) => {
     setOpenWeeks(prev => ({ ...prev, [weekNum]: !prev[weekNum] }));
+  };
+
+  const handleSyncPlaneacionToDataLake = async () => {
+    if (!mallaCurricularData.length || isSyncingPlaneacion) return;
+    setIsSyncingPlaneacion(true);
+    addLog('CLIENT: Sincronizando planeación curricular al Data Lake...');
+    try {
+      let successCount = 0;
+      for (const semana of mallaCurricularData) {
+        const payload: SemanaPlaneacion = {
+          semana: semana.semana,
+          fecha_inicio: semana.fechas.split(' - ')[0] || '',
+          fecha_fin: semana.fechas.split(' - ')[1] || '',
+          eje_tematico: semana.eje_tematico,
+          unidad_libro: semana.unidad_libro,
+          horas_json: JSON.stringify(semana.horas || []),
+          kpi: semana.kpi,
+          estado: 'borrador',
+          docente_email: userEmail || '',
+          aprobado_por: '',
+          aprobado_fecha: '',
+        };
+        const res = await guardarPlaneacionSemana(payload);
+        if (res.ok) successCount++;
+      }
+      addLog(`CLOUD SUCCESS: ${successCount}/${mallaCurricularData.length} semanas sincronizadas al Data Lake.`);
+    } catch (error) {
+      console.error('[DirectorLibrary] Error sync planeación:', error);
+      addLog('❌ CLOUD ERROR: Fallo al sincronizar planeación al Data Lake.');
+    } finally {
+      setIsSyncingPlaneacion(false);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -867,6 +938,19 @@ export function DirectorLibrary() {
                   className="flex-1 sm:flex-none px-4 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
                 >
                   <Download size={12} className="text-[#DEFF9A]" /> Descargar JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSyncPlaneacionToDataLake}
+                  disabled={isSyncingPlaneacion || isLoadingMalla || mallaCurricularData.length === 0}
+                  className="flex-1 sm:flex-none px-4 py-3 rounded-2xl bg-[#DEFF9A]/10 border border-[#DEFF9A]/30 hover:bg-[#DEFF9A]/20 disabled:opacity-30 text-[#DEFF9A] text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                >
+                  {isSyncingPlaneacion ? (
+                    <RefreshCw size={12} className="animate-spin" />
+                  ) : (
+                    <Send size={12} />
+                  )}
+                  {isSyncingPlaneacion ? 'Sincronizando...' : 'Sincronizar al Data Lake'}
                 </button>
               </div>
             </div>

@@ -35,7 +35,8 @@ import {
   Leaf,
   Medal,
   Sparkles,
-  Shield
+  Shield,
+  Image
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar, SidebarItem } from './Sidebar';
@@ -44,6 +45,7 @@ import { GroupManagement } from './GroupManagement';
 import { UserSettings } from './UserSettings';
 import { PlanningModule } from './PlanningModule';
 import { EvidenceModule } from './EvidenceModule';
+import { DocenteEvidencePanel } from './DocenteEvidencePanel';
 import { FoliosDocente } from './FoliosDocente';
 import { DocenteReconocimiento } from './DocenteReconocimiento';
 import { LibroVirtual } from './LibroVirtual';
@@ -279,6 +281,7 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
 
     { id: 'safe-zone', label: '🛡️ Auditoría SafeZone', icon: Shield, badge: 'CONV', category: 'Monitoreo & Innovación', isPrincipal: true },
     { id: 'evidencias', label: 'Evidencias', icon: Camera, category: 'Monitoreo & Innovación' },
+    { id: 'evidencias-recibidas', label: 'Evidencias Recibidas', icon: Image, badge: 'GRUPOS', category: 'Monitoreo & Innovación' },
     { id: 'reconocimiento', label: 'Reconocimiento / Muro', icon: Award, category: 'Monitoreo & Innovación' },
   ];
 
@@ -756,6 +759,8 @@ export function DocenteMainboard({ currentRole, onRoleChange }: DocenteMainboard
                 <SafeZoneTeacherAnalytics />
               ) : currentView === 'evidencias' ? (
                 <EvidenceModule />
+              ) : currentView === 'evidencias-recibidas' ? (
+                <DocenteEvidencePanel />
               ) : currentView === 'folios' ? (
                 <FoliosDocente />
               ) : currentView === 'reconocimiento' ? (

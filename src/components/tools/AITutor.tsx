@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GRAMMAR_LIBRARY, GrammarTopic } from './grammarLibraryData';
+import { buildAIContext, AIContext } from '../../services/workbook/aiKnowledgeBridge';
 
 interface ChatMessage {
   id: string;
@@ -46,11 +47,32 @@ export function AITutor({ onClose }: { onClose: () => void }) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [aiContext, setAiContext] = useState<AIContext | null>(null);
 
   // Library tab states
   const [selectedTopic, setSelectedTopic] = useState<GrammarTopic | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<'All' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'>('All');
+
+  // Build AI context from student progress on mount
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const userRaw = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          const email = user.email || user.user_id || '';
+          if (email) {
+            const context = await buildAIContext(email);
+            setAiContext(context);
+          }
+        }
+      } catch (e) {
+        console.warn('[AITutor] No se pudo cargar contexto del alumno:', e);
+      }
+    };
+    loadContext();
+  }, []);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,7 +117,11 @@ export function AITutor({ onClose }: { onClose: () => void }) {
       const response = await fetch(apiUrl('/api/tutor'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageToSend, history })
+        body: JSON.stringify({
+          message: messageToSend,
+          history,
+          studentContext: aiContext
+        })
       });
 
       const data = await response.json();

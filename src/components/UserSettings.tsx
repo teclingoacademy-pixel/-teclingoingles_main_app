@@ -547,14 +547,16 @@ export function UserSettings({
           const docenteId = primerGrupo.docente_id;
           if (docenteEmail) {
             const perfilDocente = await obtenerPerfilCompleto({ email: docenteEmail, rol: 'DOCENTE' });
-            setAssignedTeacherFromSheet({
-              name: (perfilDocente.nombre as string) || 'Docente',
-              email: docenteEmail,
-              id: docenteId || '—',
-              phone: String(perfilDocente.phone ?? ''),
-              degree: (perfilDocente.degree as string) || 'DOCENTE',
-              status: 'ACTIVE',
-            });
+            if (perfilDocente) {
+              setAssignedTeacherFromSheet({
+                name: (perfilDocente.nombre as string) || 'Docente',
+                email: docenteEmail,
+                id: docenteId || '—',
+                phone: String(perfilDocente.phone ?? ''),
+                degree: (perfilDocente.degree as string) || 'DOCENTE',
+                status: 'ACTIVE',
+              });
+            }
           }
         }
       } catch (err) {
@@ -750,7 +752,22 @@ export function UserSettings({
     'MIXTA / HÍBRIDA',
   ];
 
-  const [instData, setInstData] = useState({
+  const [instData, setInstData] = useState<{
+    name: string;
+    institution_type: string;
+    institution_code: string;
+    slogan: string;
+    phone: string;
+    address: string;
+    email: string;
+    facebook: string;
+    instagram: string;
+    linkedin: string;
+    carreras: string[];
+    turnos: string[];
+    modalidad: string;
+    semestres: string;
+  }>({
     name: institutionName,
     institution_type: 'TECNOLÓGICO / INSTITUTO TECNOLÓGICO',
     institution_code: '',
@@ -761,7 +778,6 @@ export function UserSettings({
     facebook: '',
     instagram: '',
     linkedin: '',
-    // Académico — vacío por defecto, el director agrega sus propios datos
     carreras: [],
     turnos: [],
     modalidad: 'PRESENCIAL',
@@ -1646,107 +1662,36 @@ className={`px-3 sm:px-4 py-1.5 sm:py-2 border rounded-lg sm:rounded-xl text-[8p
                                   placeholder="Ej: 2024001234"
                                   className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all font-mono"
                                  />
-                              </div>
+                               </div>
+{/* OCULTO: Campo Carrera — eliminado para versión exclusiva de inglés
 <div className="space-y-1.5 sm:space-y-2">
-                                <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                                  Carrera
-                                  {studentData.dir_carreras && studentData.dir_carreras.length > 0 ? (
-                                    <span className="text-[#DEFF9A]/60 text-[7px]">({studentData.dir_carreras.length} de tu institución)</span>
-                                  ) : (
-                                    <span className="text-amber-300/60 text-[7px]">(sin config del director)</span>
-                                  )}
-                                </label>
-                                <select
-                                  value={profile.career || ''}
-                                  onChange={(e) => { profile.setCareer?.(e.target.value); setIsDirty(true); }}
-                                  disabled={!studentData.dir_carreras || studentData.dir_carreras.length === 0}
-                                  className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <option value="" className="bg-[#0b0f19]">
-                                    {studentData.dir_carreras && studentData.dir_carreras.length > 0
-                                      ? 'Selecciona carrera…'
-                                      : '— sin carreras configuradas —'}
-                                  </option>
-                                  {/* SOLO las carreras reales del director (sin fallback hardcoded) */}
-                                  {studentData.dir_carreras && studentData.dir_carreras.map(c => (
-                                    <option key={`dir-${c}`} value={c} className="bg-[#061a1a] text-[#DEFF9A]">⭐ {c}</option>
-                                  ))}
-                                </select>
-                                {(!studentData.dir_carreras || studentData.dir_carreras.length === 0) && (
-                                  <p className="text-amber-300/70 text-[8px] ml-1 leading-tight">
-                                    ⚠️ Tu director aún no ha configurado carreras. Pídele que las agregue en Settings → IDENTIDAD → Configuración Académica.
-                                  </p>
-                                )}
-                             </div>
+  <label>Carrera</label>
+  <select>...</select>
+</div>
+*/}
+
+{/* OCULTO: Campo Turno — eliminado para versión exclusiva de inglés
 <div className="space-y-1.5 sm:space-y-2">
-                                <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                                  Turno
-                                  {studentData.dir_turnos && studentData.dir_turnos.length > 0 ? (
-                                    <span className="text-[#DEFF9A]/60 text-[7px]">({studentData.dir_turnos.length} de tu institución)</span>
-                                  ) : (
-                                    <span className="text-amber-300/60 text-[7px]">(sin config del director)</span>
-                                  )}
-                                </label>
-                                <select
-                                  value={profile.shift || ''}
-                                  onChange={(e) => { profile.setShift?.(e.target.value); setIsDirty(true); }}
-                                  disabled={!studentData.dir_turnos || studentData.dir_turnos.length === 0}
-                                  className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <option value="" className="bg-[#0b0f19]">
-                                    {studentData.dir_turnos && studentData.dir_turnos.length > 0
-                                      ? 'Selecciona turno…'
-                                      : '— sin turnos configurados —'}
-                                  </option>
-                                  {/* SOLO turnos del director (sin fallback hardcoded) */}
-                                  {studentData.dir_turnos && studentData.dir_turnos.map(t => (
-                                    <option key={`dir-${t}`} value={t} className="bg-[#061a1a] text-[#DEFF9A]">⭐ {t}</option>
-                                  ))}
-                                </select>
-                             </div>
+  <label>Turno</label>
+  <select>...</select>
+</div>
+*/}
 
-                             {/* Modalidad — del director, read-only o editable según config */}
-                             <div className="space-y-1.5 sm:space-y-2">
-                                <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                                   Modalidad
-                                   {studentData.dir_modalidad ? (
-                                     <span className="text-[#DEFF9A]/60 text-[7px]">(de tu institución)</span>
-                                   ) : (
-                                     <span className="text-amber-300/60 text-[7px]">(catálogo genérico)</span>
-                                   )}
-                                </label>
-                                {studentData.dir_modalidad ? (
-                                  // Read-only porque la modalidad la configura el director
-                                  <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-[#DEFF9A] text-xs font-black uppercase flex items-center gap-2 select-all cursor-default">
-                                    <Lock size={10} className="text-white/30" />
-                                    ⭐ {studentData.dir_modalidad}
-                                    <span className="text-white/30 text-[8px] font-normal ml-auto">Bloqueado por institución</span>
-                                  </div>
-                                ) : (
-                                  <select
-                                    value={profile.career ? '' : ''}
-                                    disabled
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white/40 text-xs font-bold cursor-not-allowed appearance-none"
-                                  >
-                                    <option>— definida por tu director —</option>
-                                  </select>
-                                )}
-                             </div>
+{/* OCULTO: Campo Modalidad — eliminado para versión exclusiva de inglés
+<div className="space-y-1.5 sm:space-y-2">
+  <label>Modalidad</label>
+  ...
+</div>
+*/}
 
-                             <div className="space-y-1.5 sm:space-y-2">
-                                <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Semestre</label>
-                                <select
-                                 value={profile.semestre || ''}
-                                 onChange={(e) => { profile.setSemestre?.(e.target.value); setIsDirty(true); }}
-                                 className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl py-2.5 sm:py-4 px-3 sm:px-6 text-white text-xs font-bold outline-none focus:border-[#38BDF8]/40 transition-all appearance-none cursor-pointer"
-                                >
-                                 <option value="" className="bg-[#0b0f19]">Selecciona semestre…</option>
-                                 {SEMESTRES.map(s => (
-                                   <option key={s} value={s} className="bg-[#0b0f19]">Semestre {s}</option>
-                                 ))}
-                                </select>
-                             </div>
-                             <div className="space-y-1.5 sm:space-y-2">
+{/* OCULTO: Campo Semestre — eliminado para versión exclusiva de inglés
+<div className="space-y-1.5 sm:space-y-2">
+  <label>Semestre</label>
+  <select>...</select>
+</div>
+*/}
+
+                              <div className="space-y-1.5 sm:space-y-2">
                                 <label className="text-[8px] sm:text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Módulo TEC</label>
                                 <select
                                  value={profile.moduloTec || ''}

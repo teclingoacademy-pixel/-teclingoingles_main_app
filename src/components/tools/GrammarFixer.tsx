@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { apiUrl } from '../../services/apiConfig';
 import {
   Edit3,
@@ -21,6 +21,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { buildAIContext, AIContext } from '../../services/workbook/aiKnowledgeBridge';
 
 const CHALLENGES = [
   {
@@ -107,8 +108,10 @@ export function GrammarFixer({ onClose }: { onClose: () => void }) {
     score: number;
     cefr?: string;
     suggestion: string;
+    classSuggestion?: string;
   } | null>(null);
   const [isExpertMode, setIsExpertMode] = useState(false);
+  const [aiContext, setAiContext] = useState<AIContext | null>(null);
 
   // Challenge State
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
@@ -118,6 +121,26 @@ export function GrammarFixer({ onClose }: { onClose: () => void }) {
     score: number;
     details: string;
   } | null>(null);
+
+  // Build AI context on mount
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const userRaw = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          const email = user.email || user.user_id || '';
+          if (email) {
+            const context = await buildAIContext(email);
+            setAiContext(context);
+          }
+        }
+      } catch (e) {
+        console.warn('[GrammarFixer] No se pudo cargar contexto:', e);
+      }
+    };
+    loadContext();
+  }, []);
 
   const filteredChallenges = useMemo(
     () =>
@@ -384,6 +407,22 @@ export function GrammarFixer({ onClose }: { onClose: () => void }) {
                           {analysisResult?.suggestion || "Analysis complete."}
                         </p>
                       </div>
+
+                      {/* Class-based suggestion */}
+                      {aiContext && aiContext.weak_skills.length > 0 && (
+                        <div className="p-6 rounded-2xl bg-indigo-500/5 border border-indigo-400/20 space-y-4">
+                          <div className="flex items-center gap-2 text-indigo-400">
+                            <Sparkles size={14} />
+                            <span className="text-[9px] font-black uppercase tracking-widest">
+                              Sugerencia de tu clase {aiContext.current_clase}
+                            </span>
+                          </div>
+                          <p className="text-white text-xs font-medium leading-relaxed">
+                            Basado en tu progreso, tu área débil es: <strong>{aiContext.weak_skills.join(', ').replace(/_/g, ' ')}</strong>.
+                            Te recomiendo practicar ejercicios de esta habilidad en el Libro Virtual.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="p-6 rounded-[2rem] bg-white/5 border border-white/10 text-center space-y-2">
                         <p className="text-white/20 text-[8px] font-black uppercase tracking-widest">

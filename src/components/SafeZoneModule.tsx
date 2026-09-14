@@ -29,6 +29,7 @@ import {
   SAFEZONE_MOCK_DATA, 
   ChatMessage
 } from '../data/safeZoneContext';
+import { buildAIContext, AIContext } from '../services/workbook/aiKnowledgeBridge';
 
 const VELOCITY_STEPS = [
   { value: '0.60', label: '0.60x (Búnker Profundo)', speed: 0.60, desc: 'Ultralento, ideal para asimilar fonemas paso a paso.' },
@@ -110,6 +111,27 @@ export function SafeZoneModule() {
 
   // Conversation Mode: 'basic' (cockpit word limits), 'casual' (5-10 word bridge), 'native' (full freedom)
   const [conversationMode, setConversationMode] = useState<'basic' | 'casual' | 'native'>('basic');
+  const [aiContext, setAiContext] = useState<AIContext | null>(null);
+
+  // Build AI context on mount
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const userRaw = localStorage.getItem('user');
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          const email = user.email || user.user_id || '';
+          if (email) {
+            const context = await buildAIContext(email);
+            setAiContext(context);
+          }
+        }
+      } catch (e) {
+        console.warn('[SafeZone] No se pudo cargar contexto:', e);
+      }
+    };
+    loadContext();
+  }, []);
 
   // Chat message state
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -425,6 +447,7 @@ export function SafeZoneModule() {
           escritoPercibido: percepcion.nivel_escrito_percibido,
           temorConversacional: percepcion.nivel_conversacional_percibido,
           conversationMode,
+          studentContext: aiContext,
         })
       });
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   BookOpen, 
   CheckSquare, 
@@ -26,6 +26,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './GlassCard';
 import { mallaCurricularModulo1 } from '../data/mallaCurricularModulo1';
+import { obtenerPlaneacion, guardarPlaneacionSemana, SemanaPlaneacion } from '../services/workbook/planeacionService';
+import { useAppContext } from '../context/AppContext';
 
 // Comprehensive dataset with ALL 18 weeks, 100% focused on Everyday English general situations (No technical jargon)
 const semanasDemoData: { [key: number]: any } = {
@@ -140,9 +142,11 @@ for (let i = 6; i <= 18; i++) {
 }
 
 export function PlanningModule() {
+  const { userEmail } = useAppContext();
   const [semanas, setSemanas] = useState<{ [key: number]: any }>(semanasDemoData);
   const [semanaSeleccionadaId, setSemanaSeleccionadaId] = useState<number>(1);
   const [filtroEstado, setFiltroEstado] = useState<'TODAS' | 'APROBADAS' | 'PENDIENTES'>('TODAS');
+  const [loadingDataLake, setLoadingDataLake] = useState(true);
 
   // Modal control states
   const [showCalendarModal, setShowCalendarModal] = useState(false);
@@ -153,6 +157,44 @@ export function PlanningModule() {
   const [tempComentarios, setTempComentarios] = useState("");
   const [alertSuccess, setAlertSuccess] = useState(false);
 
+  // Load planeación from Data Lake on mount
+  useEffect(() => {
+    const loadDataLakePlaneacion = async () => {
+      try {
+        const res = await obtenerPlaneacion();
+        if (res.ok && res.data && res.data.length > 0) {
+          const semanasMap: { [key: number]: any } = {};
+          res.data.forEach((s) => {
+            const semanaNum = Number(s.semana);
+            let horas = [];
+            try { horas = JSON.parse(s.horas_json || '[]'); } catch {}
+            semanasMap[semanaNum] = {
+              semanaWeb: semanaNum,
+              unidad: s.unidad_libro || `Unidad ${Math.ceil(semanaNum / 2)}`,
+              eje_tematico: s.eje_tematico || '',
+              progreso: s.estado === 'aprobada' ? 100 : 0,
+              docenteResponsable: s.docente_email || 'Sin asignar',
+              estadoEvaluacion: s.estado || 'borrador',
+              entregasEstimadas: [],
+              checksMalla: horas.map((h: any, i: number) => ({
+                id: `chk_${semanaNum}_${i}`,
+                txt: h.leccion || `Lección ${i + 1}`,
+                done: false
+              })),
+              comentariosDirector: s.aprobado_por ? `Aprobado por ${s.aprobado_por}` : ''
+            };
+          });
+          setSemanas(prev => ({ ...prev, ...semanasMap }));
+        }
+      } catch (e) {
+        console.warn('[PlanningModule] Data Lake no disponible, usando datos locales:', e);
+      } finally {
+        setLoadingDataLake(false);
+      }
+    };
+    loadDataLakePlaneacion();
+  }, []);
+
   const activeSemana = semanas[semanaSeleccionadaId];
 
   const handleEditOpen = () => {
@@ -162,15 +204,35 @@ export function PlanningModule() {
   };
 
   const handleSavePlanChanges = () => {
+    const newEstado = activeSemana.estadoEvaluacion === 'Sincronizado' ? 'Cargado' : activeSemana.estadoEvaluacion;
     setSemanas(prev => ({
       ...prev,
       [semanaSeleccionadaId]: {
         ...prev[semanaSeleccionadaId],
         docenteResponsable: tempResponsable,
         comentariosDirector: tempComentarios,
-        estadoEvaluacion: activeSemana.estadoEvaluacion === 'Sincronizado' ? 'Cargado' : activeSemana.estadoEvaluacion
+        estadoEvaluacion: newEstado
       }
     }));
+
+    // Persist to Data Lake
+    const semanaPayload: SemanaPlaneacion = {
+      semana: semanaSeleccionadaId,
+      fecha_inicio: '',
+      fecha_fin: '',
+      eje_tematico: activeSemana.eje_tematico || '',
+      unidad_libro: activeSemana.unidad || '',
+      horas_json: JSON.stringify(activeSemana.checksMalla?.map((c: any) => ({ leccion: c.txt })) || []),
+      kpi: activeSemana.entregasEstimadas?.[0]?.titulo || '',
+      estado: newEstado?.toLowerCase() || 'borrador',
+      docente_email: tempResponsable || userEmail || '',
+      aprobado_por: '',
+      aprobado_fecha: '',
+    };
+    guardarPlaneacionSemana(semanaPayload).catch(err =>
+      console.warn('[PlanningModule] Error guardando en Data Lake:', err)
+    );
+
     setAlertSuccess(true);
     setTimeout(() => {
       setAlertSuccess(false);

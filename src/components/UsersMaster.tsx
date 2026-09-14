@@ -309,7 +309,7 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                       <span className="opacity-50">•</span>
                       <div className="flex items-center gap-2">
                         <span className="opacity-50 font-mono text-[#DEFF9A]">{user.id_empleado}</span>
-                        <button onClick={() => copyToClipboard(user.id_empleado)} className="hover:text-[#DEFF9A] transition-colors">
+                        <button onClick={() => user.id_empleado && copyToClipboard(user.id_empleado)} className="hover:text-[#DEFF9A] transition-colors">
                           <Copy size={12} />
                         </button>
                       </div>
@@ -497,7 +497,7 @@ export function UserHierarchyModal({ user, onClose, onUpdateRole, onToggleStatus
                           <Key size={10} /> ID Empleado
                         </span>
                         <p className="text-[#DEFF9A] text-xs font-bold font-mono tracking-tighter">{user.id_empleado}</p>
-                        <button onClick={() => copyToClipboard(user.id_empleado)} className="absolute top-4 right-4 text-white/10 hover:text-[#DEFF9A] transition-colors">
+                        <button onClick={() => user.id_empleado && copyToClipboard(user.id_empleado)} className="absolute top-4 right-4 text-white/10 hover:text-[#DEFF9A] transition-colors">
                           <Copy size={10} />
                         </button>
                       </div>

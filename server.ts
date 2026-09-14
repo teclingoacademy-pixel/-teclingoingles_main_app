@@ -38,8 +38,8 @@ app.get("/api/health", (req, res) => {
 });
 
 app.post("/api/tutor", async (req, res) => {
-  const { message, history, systemPrompt, currentSpeed, conversationMode, hobby, channel } = req.body;
-  console.log(`[ALERTA NATIVA] Modo: ${conversationMode} | Velocidad: ${currentSpeed}`);
+  const { message, history, systemPrompt, currentSpeed, conversationMode, hobby, channel, studentContext } = req.body;
+  console.log(`[ALERTA NATIVA] Modo: ${conversationMode} | Velocidad: ${currentSpeed}` + (studentContext ? ` | Clase: ${studentContext.current_clase}` : ''));
 
   // Si llega undefined o vacío, fuérzalo a 'basic'
   const mode = conversationMode || 'basic';
@@ -83,7 +83,7 @@ Tus respuestas deben ser claras, detalladas, profesionales y con una estructura 
 Sigue estrictamente estas directrices:
 1. Explica la regla de gramática sobre la que te pregunten detalladamente y con calidez pedagógica. Si te preguntan en español, contesta en español.
 2. Proporciona SIEMPRE ejemplos prácticos en inglés formateados y destacados de forma elegante, junto con sus traducciones al español.
-3. Si el usuario te hace preguntas que no sean de estudio académico de inglés (como debatir política o temas irrelevantes), guíalo amablemente de regreso a las reglas de inglés, gramática, oraciones o vocabulario.`
+3. Si el usuario te hace preguntas que no sean de estudio académico de inglés (como debatir política o temas irrelevantes), guíalo amablemente de regreso a las reglas de inglés, gramática, oraciones o vocabulario.${studentContext ? `\n\nSTUDENT CONTEXT:\n- Student is on class ${studentContext.current_clase} (week ${studentContext.current_week} of 18)\n- Grammar topics covered: ${(studentContext.grammar_topics_covered || []).join(', ').replace(/_/g, ' ') || 'none yet'}\n- Vocabulary learned: ${(studentContext.vocabulary_learned || []).join(', ').replace(/_/g, ' ') || 'none yet'}\n- Weak areas: ${(studentContext.weak_skills || []).join(', ').replace(/_/g, ' ') || 'none identified'}\n- Course progress: ${studentContext.progress_percent || 0}%\n- XP earned: ${studentContext.xp_total || 0}\n\nADAPT your responses to focus on their current level, use vocabulary they know, and spend extra time on weak areas.` : ''}`
       }
     ];
     if (Array.isArray(history)) {
@@ -302,7 +302,7 @@ app.post("/api/grammar/verify", async (req, res) => {
     const targetWords = cleanTarget.split(/\s+/);
     
     let matchedWords = 0;
-    targetWords.forEach(word => {
+    targetWords.forEach((word: string) => {
       if (studentWords.includes(word)) {
         matchedWords++;
       }

@@ -121,7 +121,7 @@ export function QuickChat({ onNavigateToFullChat }: { onNavigateToFullChat: (use
         <div className="bg-[#DEFF9A] px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#061a1a] flex items-center justify-center text-[#DEFF9A] text-xs font-black">
-              {quickChatUser.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+              {quickChatUser.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || '?'}
             </div>
             <div>
               <p className="text-[#061a1a] text-[11px] font-black uppercase tracking-tight leading-none">{quickChatUser.name}</p>
