@@ -253,7 +253,7 @@ export function DirectorLibrary() {
     const fetchMallaCurricular = async () => {
       try {
         setIsLoadingMalla(true);
-        const res = await fetch(`${API_URL_READ}?action=read&sheet=MallaCurricular`);
+        const res = await fetch(`${API_URL_READ}?action=readWorkbookSheet&sheet=MallaCurricular`);
         const rawData = await res.json();
 
         // Extraer array: la API puede devolver un array directo, { rows: [...] }, { data: [...] } o { result: [...] }
