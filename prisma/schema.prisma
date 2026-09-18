@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum Skill {
+  GRAMMAR
+  READING
+  LISTENING
+  SPEAKING
+  VOCABULARY
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  role          Role           @default(STUDENT)
+  streakDays    Int            @default(0)
+  totalXp        Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  submissions   Submission[]
+  userProgress  UserProgress[]
+}
+
+model Lesson {
+  id           String         @id // Ej: "A1_C01"
+  level        String         // Ej: "A1"
+  title        String
+  description  String?
+  order        Int            @default(1)
+  isPublished  Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  exercises    Exercise[]
+  userProgress UserProgress[]
+}
+
+model Exercise {
+  id                   String       @id // reactivo_id, ej: "A1_C01_GRAM_01"
+  lessonId             String       // clase_id
+  skill                Skill        // habilidad: GRAMMAR, READING, etc.
+  itemNumber           Int          // numero_reactivo
+  questionType         String       // tipo_pregunta: multiple_choice, comprehension, etc.
+  spanishContext       String?      // contexto_espanol
+  instruction          String?      // instruccion
+  questionText         String       // pregunta_texto
+  translationSentence  String?      // frase_traduccion
+  optionsJson          Json         // opciones_json
+  optionsTranslation   Json?        // opciones_traduccion_json
+  correctAnswer        String       // respuesta_correcta
+  explanation          String?      // respuesta_explicacion
+  vocabularyHint       String?      // pista_vocabulario
+  audioUrl             String?      // audio_url
+  points               Int          @default(10) // puntos
+  timeLimitSec         Int          @default(30) // tiempo_limite_seg
+  difficulty           Int          @default(1)  // dificultad
+  active               Boolean      @default(true) // activo
+
+  lesson      Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+}
+
+model UserProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  lessonId    String
+  completed   Boolean  @default(false)
+  score       Float?
+  completedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+}
+
+model Submission {
+  id           String   @id @default(uuid())
+  userId       String
+  exerciseId   String
+  userAnswer   String
+  isCorrect    Boolean
+  timeSpentSec Int
+  createdAt    DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+}

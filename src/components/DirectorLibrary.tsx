@@ -267,16 +267,42 @@ export function DirectorLibrary() {
           data = [];
         }
 
-        // Transformar datos de Sheets al formato SemanaMalla
-        const transformedData: SemanaMalla[] = data.map((row: any) => ({
-          semana: Number(row.semana),
-          fechas: row.fechas || '',
-          eje_tematico: row.eje_tematico || '',
-          unidad_libro: row.unidad_libro || '',
-          paginas: row.paginas || '',
-          kpi: row.kpi || '',
-          horas: typeof row.horas_json === 'string' ? JSON.parse(row.horas_json) : (row.horas || [])
-        }));
+        // Transformar datos de Sheets al formato SemanaMalla — agrupar por semana
+        const semanaMap = new Map<number, SemanaMalla>();
+        data.forEach((row: any) => {
+          let semanaNum = Number(row.semana) || 0;
+          if (!semanaNum && row.fechas) {
+            const match = String(row.fechas).match(/Semana\s+(\d+)/i);
+            if (match) semanaNum = Number(match[1]);
+          }
+          if (!semanaNum) return;
+
+          let horas: any[] = [];
+          if (row.horas_json) {
+            horas = typeof row.horas_json === 'string' ? JSON.parse(row.horas_json) : row.horas_json;
+          } else if (row.horas) {
+            horas = typeof row.horas === 'string' ? JSON.parse(row.horas) : row.horas;
+          }
+
+          const existing = semanaMap.get(semanaNum);
+          if (existing) {
+            existing.horas = [...existing.horas, ...horas];
+            if (!existing.eje_tematico && row.eje_tematico) existing.eje_tematico = row.eje_tematico;
+            if (!existing.unidad_libro && row.unidad_libro) existing.unidad_libro = row.unidad_libro;
+            if (!existing.kpi && row.kpi) existing.kpi = row.kpi;
+          } else {
+            semanaMap.set(semanaNum, {
+              semana: semanaNum,
+              fechas: row.fechas || '',
+              eje_tematico: row.eje_tematico || '',
+              unidad_libro: row.unidad_libro || '',
+              paginas: row.paginas || '',
+              kpi: row.kpi || '',
+              horas
+            });
+          }
+        });
+        const transformedData: SemanaMalla[] = Array.from(semanaMap.values()).sort((a, b) => a.semana - b.semana);
 
         // Also fetch planeación from Data Lake PLANEACION_SEMANAS
         try {
